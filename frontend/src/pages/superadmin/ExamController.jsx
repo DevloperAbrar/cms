@@ -1,0 +1,1 @@
+export { ExamControllerPage as default } from './Users';

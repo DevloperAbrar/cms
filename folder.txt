@@ -1,0 +1,214 @@
+campuscms/
+├── backend/
+│   ├── config/
+│   │   ├── db.js                    # MongoDB connection
+│   │   ├── passport.js              # Google OAuth (renamed from googleOAuth.js for clarity)
+│   │   └── constants.js             # App-wide constants (roles, statuses, etc.)
+│   ├── models/
+│   │   ├── User.js
+│   │   ├── Stream.js
+│   │   ├── Department.js
+│   │   ├── Branch.js
+│   │   ├── Subject.js
+│   │   ├── ExamPattern.js
+│   │   ├── MarksComponent.js
+│   │   ├── Timetable.js
+│   │   ├── Attendance.js
+│   │   ├── Marks.js
+│   │   ├── MarksHistory.js
+│   │   ├── Quiz.js
+│   │   ├── QuizAttempt.js
+│   │   ├── Notice.js
+│   │   ├── Message.js
+│   │   ├── ParentToken.js
+│   │   ├── FacutlyAttendence.js
+│   │   ├── FinalResult.js
+│   │   ├── FinalResultConfig.js
+│   │   └── AuditLog.js
+│   ├── routes/
+│   │   ├── auth.routes.js           # Suffix added for clarity
+│   │   ├── superadmin.routes.js
+│   │   ├── hod.routes.js
+│   │   ├── coordinator.routes.js
+│   │   ├── faculty.routes.js
+│   │   ├── examcontroller.routes.js
+│   │   ├── student.routes.js
+│   │   └── parent.routes.js
+│   ├── controllers/
+│   │   ├── auth.controller.js
+│   │   ├── superadmin.controller.js
+│   │   ├── hod.controller.js
+│   │   ├── coordinator.controller.js
+│   │   ├── faculty.controller.js
+│   │   ├── examcontroller.controller.js
+│   │   ├── student.controller.js
+│   │   ├── coordinator_finalresult.controller.js
+│   │   ├── faculty.controller.js
+│   │   ├── share_finalresult.controller.js
+│   │   └── parent.controller.js
+│   ├── middleware/
+│   │   ├── auth.middleware.js        # JWT verify + attach user
+│   │   ├── role.middleware.js        # Role-based access
+│   │   └── audit.middleware.js       # Auto-log write actions
+│   ├── services/
+│   │   ├── attendance.service.js
+│   │   ├── marks.service.js
+│   │   ├── grade.service.js
+│   │   ├── csv.service.js
+│   │   ├── quiz.service.js
+│   │   ├── image.service.js         # Sharp compression
+│   │   ├── notice.service.js
+│   │   ├── parentToken.service.js
+│   │   ├── finalResult.service.js
+│   │   └── email.service.js
+│   ├── utils/
+│   │   ├── csvParser.js
+│   │   ├── csvTemplateGenerator.js
+│   │   ├── pdfExport.js
+│   │   ├── apiResponse.js           # NEW: Standardized response helpers
+│   │   └── logger.js                # NEW: Winston logger
+│   ├── uploads/
+│   │   └── quiz/                    # Quiz images stored here
+│   ├── .env
+│   ├── .env.example
+│   ├── app.js
+│   ├── server.js                    # NEW: Separate entry point (keeps app.js clean)
+│   └── package.json
+│
+└── frontend/
+    ├── public/
+    │   └── favicon.ico
+    ├── src/
+    │   ├── api/                     # NEW: Centralized API layer (replaces scattered fetch calls)
+    │   │   ├── axiosInstance.js
+    │   │   ├── auth.api.js
+    │   │   ├── superadmin.api.js
+    │   │   ├── hod.api.js
+    │   │   ├── coordinator.api.js
+    │   │   ├── faculty.api.js
+    │   │   ├── examcontroller.api.js
+    │   │   ├── student.api.js
+    │   │   └── parent.api.js
+    │   ├── components/
+    │   │   ├── common/
+    │   │   │   ├── Sidebar.jsx
+    │   │   │   ├── Navbar.jsx
+    │   │   │   ├── Table.jsx
+    │   │   │   ├── Modal.jsx
+    │   │   │   ├── ConfirmDialog.jsx
+    │   │   │   ├── StatusBadge.jsx
+    │   │   │   ├── Charts.jsx
+    │   │   │   ├── PageHeader.jsx   # NEW: Reusable page header
+    │   │   │   ├── LoadingSpinner.jsx # NEW: Reusable loader
+    │   │   │   └── EmptyState.jsx   # NEW: Empty state UI
+    │   │   ├── attendance/
+    │   │   │   ├── AttendanceGrid.jsx
+    │   │   │   ├── AttendanceFilters.jsx
+    │   │   │   └── AttendancePDFExport.jsx
+    │   │   ├── marks/
+    │   │   │   ├── FinalResultsRanking.jsx
+    │   │   ├── marks/
+    │   │   │   ├── MarksTable.jsx
+    │   │   │   ├── SubFieldTable.jsx
+    │   │   │   ├── MarksCSVUpload.jsx
+    │   │   │   ├── CSVTemplateDownload.jsx
+    │   │   │   └── SGPACGPACard.jsx
+    │   │   └── quiz/
+    │   │       ├── QuestionBuilder.jsx
+    │   │       ├── QuestionImageUpload.jsx
+    │   │       └── QuizTimer.jsx
+    │   ├── pages/
+    │   │   ├── auth/
+    │   │   │   ├── SuperAdminLogin.jsx
+    │   │   │   └── GoogleCallback.jsx
+    │   │   ├── superadmin/
+    │   │   │   ├── Dashboard.jsx
+    │   │   │   ├── Streams.jsx
+    │   │   │   ├── Departments.jsx
+    │   │   │   ├── Branches.jsx
+    │   │   │   ├── Subjects.jsx
+    │   │   │   ├── Students.jsx
+    │   │   │   ├── Faculty.jsx
+    │   │   │   ├── HODs.jsx
+    │   │   │   ├── ExamController.jsx
+    │   │   │   ├── FinalResults.jsx
+    │   │   │   ├── ExamPattern.jsx
+    │   │   │   ├── User.jsx
+    │   │   │   ├── AuditLogs.jsx    # Added (was in access matrix)
+    │   │   │   └── Notices.jsx
+    │   │   ├── hod/
+    │   │   │   ├── Dashboard.jsx
+    │   │   │   ├── Timetable.jsx
+    │   │   │   ├── Students.jsx
+    │   │   │   ├── Attendance.jsx
+    │   │   │   ├── Marks.jsx
+    │   │   │   ├── MarksLock.jsx
+    │   │   │   ├── FacultyManage.jsx
+    │   │   │   ├── Coordinators.jsx
+    │   │   │   ├── ParentURL.jsx
+    │   │   │   ├── Notices.jsx
+    │   │   │   ├── Subject.jsx
+    │   │   │   ├── ExamPattern.jsx
+    │   │   │   └── Messages.jsx
+    │   │   ├── coordinator/
+    │   │   │   ├── Dashboard.jsx
+    │   │   │   ├── BranchStudents.jsx
+    │   │   │   ├── Attendance.jsx
+    │   │   │   ├── Marks.jsx
+    │   │   │   ├── EndSemMarks.jsx
+    │   │   │   ├── FinalResults.jsx
+    │   │   │   ├── SubjectMarks.jsx
+    │   │   │   ├── ParentURL.jsx
+    │   │   │   ├── Notices.jsx
+    │   │   │   └── Messages.jsx
+    │   │   ├── faculty/
+    │   │   │   ├── Dashboard.jsx
+    │   │   │   ├── MyStudents.jsx
+    │   │   │   ├── Marks.jsx
+    │   │   │   ├── MarksUpload.jsx
+    │   │   │   ├── SubFieldConfig.jsx
+    │   │   │   ├── Quiz.jsx
+    │   │   │   ├── QuizCreate.jsx
+    │   │   │   ├── QuizResults.jsx
+    │   │   │   ├── Notices.jsx
+    │   │   │   ├── Attendance.jsx
+    │   │   │   ├── FinalResult.jsx
+    │   │   │   ├── QuizEdi.jsx
+    │   │   │   └── Messages.jsx
+    │   │   ├── examcontroller/
+    │   │   │   ├── Dashboard.jsx
+    │   │   │   ├── EndSemMarks.jsx
+    │   │   │   ├── FinalResults.jsx
+    │   │   │   └── MarksUpload.jsx
+    │   │   ├── student/
+    │   │   │   ├── Dashboard.jsx
+    │   │   │   ├── Attendance.jsx
+    │   │   │   ├── Marks.jsx
+    │   │   │   ├── Timetable.jsx
+    │   │   │   ├── FinalResults.jsx
+    │   │   │   ├── Quiz.jsx
+    │   │   │   ├── QuizAttempt.jsx
+    │   │   │   ├── StudentQuizResult.jsx
+    │   │   │   └── Notices.jsx
+    │   │   └── parent/
+    │   │       └── ParentView.jsx
+    │   ├── hooks/
+    │   │   ├── useAuth.js
+    │   │   ├── useRole.js
+    │   │   └── useToast.js
+    │   ├── store/
+    │   │   └── authStore.js
+    │   ├── utils/
+    │   │   ├── roleGuard.jsx
+    │   │   ├── csvTemplateGenerator.js
+    │   │   └── gradeCalculator.js
+    │   ├── layouts/               # NEW: Role-based layout wrappers
+    │   │   ├── Index.jsx
+    │   ├── App.jsx
+    │   ├── main.jsx
+    │   └── index.css
+    ├── index.html
+    ├── vite.config.js
+    ├── tailwind.config.js
+    ├── postcss.config.js
+    └── package.json

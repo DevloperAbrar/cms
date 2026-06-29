@@ -1,0 +1,1 @@
+export { HODsPage as default } from './Users';

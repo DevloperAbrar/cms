@@ -1,0 +1,1 @@
+export { FacultyPage as default } from './Users';

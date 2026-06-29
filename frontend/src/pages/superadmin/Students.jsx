@@ -1,0 +1,1 @@
+export { StudentsPage as default } from './Users';
