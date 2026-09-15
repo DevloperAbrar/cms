@@ -156,16 +156,22 @@ exports.getDeptSubjects = async (req, res) => {
 exports.assignCoordinator = async (req, res) => {
   try {
     const { faculty_id, coordinator_branches } = req.body;
-    if (!faculty_id || !coordinator_branches?.length) return sendBadRequest(res, 'faculty_id and coordinator_branches are required.');
+    if (!faculty_id || !coordinator_branches?.length) {
+      return sendBadRequest(res, 'faculty_id and coordinator_branches are required.');
+    }
 
-    // Store coordinator_branches as JSON in a metadata field — or handle via a separate table
-    // For now we update role to coordinator and store branch access in a separate field
-    const user = await prisma.user.update({
-      where: { id: faculty_id },
-      data: { role: 'coordinator' },
+    await prisma.user.update({ where: { id: faculty_id }, data: { role: 'coordinator' } });
+
+    await prisma.coordinatorBranch.deleteMany({ where: { userId: faculty_id } });
+    await prisma.coordinatorBranch.createMany({
+      data: coordinator_branches.map((cb) => ({
+        collegeId: req.user.collegeId,
+        userId: faculty_id,
+        branchId: cb.branch_id,
+        year: Number(cb.year),
+      })),
     });
 
-    if (!user) return sendNotFound(res, 'Faculty not found.');
     return sendSuccess(res, null, 'Coordinator assigned.');
   } catch (err) { return sendError(res, err.message); }
 };

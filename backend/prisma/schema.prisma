@@ -146,10 +146,10 @@ model User {
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
-  // A student's per-year record lives here, not on User directly (this is what makes promotion safe)
   yearHistory     StudentYearHistory[]
+  coordinatorOf   CoordinatorBranch[]
 
-  @@unique([collegeId, email]) // email unique PER COLLEGE, not globally — important for multi-tenant
+  @@unique([collegeId, email])
   @@unique([collegeId, enrollmentNumber])
   @@index([collegeId, role, status])
   @@index([collegeId, departmentId, role])
@@ -229,6 +229,21 @@ model Department {
   @@map("departments")
 }
 
+model CoordinatorBranch {
+  id        String   @id @default(uuid())
+  collegeId String
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  branchId  String
+  branch    Branch   @relation(fields: [branchId], references: [id])
+  year      Int
+  createdAt DateTime @default(now())
+
+  @@unique([userId, branchId, year])
+  @@index([collegeId, userId])
+  @@map("coordinator_branches")
+}
+
 model Branch {
   id           String     @id @default(uuid())
   collegeId    String
@@ -239,7 +254,7 @@ model Branch {
   status       String     @default("active")
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
-
+  coordinatorOf   CoordinatorBranch[]
   subjects     Subject[]
 
   @@unique([collegeId, code])

@@ -47,6 +47,15 @@ async function authenticate(req, res, next) {
       return res.status(403).json({ success: false, message: 'Account is inactive' });
     }
 
+    let coordinatorBranches = [];
+    if (user.role === 'coordinator') {
+      const rows = await prisma.coordinatorBranch.findMany({
+        where: { userId: user.id },
+        select: { branchId: true, year: true },
+      });
+      coordinatorBranches = rows.map((r) => ({ branch_id: r.branchId, year: r.year }));
+    }
+
     // Attach to req — rest of your controllers expect req.user
     req.user = {
       id: user.id,
@@ -63,7 +72,7 @@ async function authenticate(req, res, next) {
       semester: user.semester,
       section: user.section,
       enrollmentNumber: user.enrollmentNumber,
-      coordinatorBranches: user.coordinatorBranches || [],
+      coordinatorBranches,
     };
 
     next();
