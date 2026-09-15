@@ -1,276 +1,182 @@
-const Attendance = require('../models/Attendance');
-const { ATTENDANCE_STATUS } = require('../config/constants');
-const mongoose = require('mongoose');
-const toObjectId = (id) => new mongoose.Types.ObjectId(id);
+const prisma = require('../config/prismaClient');
 
-/**
- * Gets subject-wise attendance summary for a student.
- */
 const getStudentSubjectAttendance = async (studentId) => {
-  const result = await Attendance.aggregate([
-    { $match: { student_id: toObjectId(studentId) } },
-    {
-      $group: {
-        _id: '$subject_id',
-        total: { $sum: 1 },
-        present: { $sum: { $cond: [{ $eq: ['$status', ATTENDANCE_STATUS.PRESENT] }, 1, 0] } },
-        absent:  { $sum: { $cond: [{ $eq: ['$status', ATTENDANCE_STATUS.ABSENT]  }, 1, 0] } },
-        late:    { $sum: { $cond: [{ $eq: ['$status', ATTENDANCE_STATUS.LATE]    }, 1, 0] } },
-      },
-    },
-    {
-      $addFields: {
-        percentage: {
-          $cond: [
-            { $gt: ['$total', 0] },
-            { $round: [{ $multiply: [{ $divide: ['$present', '$total'] }, 100] }, 2] },
-            0,
-          ],
-        },
-      },
-    },
-    {
-      $lookup: {
-        from: 'subjects',
-        localField: '_id',
-        foreignField: '_id',
-        as: 'subject',
-      },
-    },
-    { $unwind: '$subject' },
-    {
-      $project: {
-        subject_id: '$_id',
-        subject_name: '$subject.name',
-        subject_code: '$subject.code',
-        total: 1,
-        present: 1,
-        absent: 1,
-        late: 1,
-        percentage: 1,
-      },
-    },
-  ]);
-  return result;
+  const records = await prisma.attendance.findMany({
+    where: { studentId },
+    include: { subject: true },  // we'll need to add subject relation below
+  });
+
+  // Prisma doesn't have a subject relation on Attendance in the schema, so we aggregate manually
+  const rows = await prisma.$queryRaw`
+    SELECT
+      a."subjectId",
+      s.name AS subject_name,
+      s.code AS subject_code,
+      COUNT(*) AS total,
+      SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) AS present,
+      SUM(CASE WHEN a.status = 'absent' THEN 1 ELSE 0 END) AS absent,
+      SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) AS late,
+      ROUND(
+        CASE WHEN COUNT(*) > 0
+          THEN (SUM(CASE WHEN a.status = 'present' THEN 1.0 ELSE 0 END) / COUNT(*)) * 100
+          ELSE 0
+        END, 2
+      ) AS percentage
+    FROM attendance a
+    JOIN subjects s ON s.id = a."subjectId"
+    WHERE a."studentId" = ${studentId}
+    GROUP BY a."subjectId", s.name, s.code
+  `;
+
+  return rows.map((r) => ({
+    subject_id: r.subjectid,
+    subject_name: r.subject_name,
+    subject_code: r.subject_code,
+    total: Number(r.total),
+    present: Number(r.present),
+    absent: Number(r.absent),
+    late: Number(r.late),
+    percentage: Number(r.percentage),
+  }));
 };
 
-/**
- * Gets overall attendance percentage for a student.
- */
 const getStudentOverallAttendance = async (studentId) => {
-  const result = await Attendance.aggregate([
-    { $match: { student_id: toObjectId(studentId) } },
-    {
-      $group: {
-        _id: null,
-        total: { $sum: 1 },
-        present: { $sum: { $cond: [{ $eq: ['$status', ATTENDANCE_STATUS.PRESENT] }, 1, 0] } },
-        absent:  { $sum: { $cond: [{ $eq: ['$status', ATTENDANCE_STATUS.ABSENT]  }, 1, 0] } },
-        late:    { $sum: { $cond: [{ $eq: ['$status', ATTENDANCE_STATUS.LATE]    }, 1, 0] } },
-      },
-    },
-    {
-      $project: {
-        total: 1,
-        present: 1,
-        absent: 1,
-        late: 1,
-        percentage: {
-          $cond: [
-            { $gt: ['$total', 0] },
-            { $round: [{ $multiply: [{ $divide: ['$present', '$total'] }, 100] }, 2] },
-            0,
-          ],
-        },
-      },
-    },
-  ]);
-  return result[0] || { total: 0, present: 0, absent: 0, late: 0, percentage: 0 };
+  const rows = await prisma.$queryRaw`
+    SELECT
+      COUNT(*) AS total,
+      SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END) AS present,
+      SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END) AS absent,
+      SUM(CASE WHEN status = 'late' THEN 1 ELSE 0 END) AS late,
+      ROUND(
+        CASE WHEN COUNT(*) > 0
+          THEN (SUM(CASE WHEN status = 'present' THEN 1.0 ELSE 0 END) / COUNT(*)) * 100
+          ELSE 0
+        END, 2
+      ) AS percentage
+    FROM attendance
+    WHERE "studentId" = ${studentId}
+  `;
+
+  const r = rows[0];
+  if (!r || Number(r.total) === 0) {
+    return { total: 0, present: 0, absent: 0, late: 0, percentage: 0 };
+  }
+  return {
+    total: Number(r.total),
+    present: Number(r.present),
+    absent: Number(r.absent),
+    late: Number(r.late),
+    percentage: Number(r.percentage),
+  };
 };
 
-/**
- * Gets month-wise attendance summary for a student, across all subjects.
- * @param {ObjectId} studentId
- * @param {Number} [monthsBack=6]
- */
 const getStudentMonthlyAttendance = async (studentId, monthsBack = 6) => {
-  const result = await Attendance.aggregate([
-    { $match: { student_id: toObjectId(studentId) } },
-    {
-      $group: {
-        _id: { year: { $year: '$date' }, month: { $month: '$date' } },
-        total:   { $sum: 1 },
-        present: { $sum: { $cond: [{ $eq: ['$status', ATTENDANCE_STATUS.PRESENT] }, 1, 0] } },
-        absent:  { $sum: { $cond: [{ $eq: ['$status', ATTENDANCE_STATUS.ABSENT]  }, 1, 0] } },
-        late:    { $sum: { $cond: [{ $eq: ['$status', ATTENDANCE_STATUS.LATE]    }, 1, 0] } },
-      },
-    },
-    {
-      $addFields: {
-        percentage: {
-          $cond: [
-            { $gt: ['$total', 0] },
-            { $round: [{ $multiply: [{ $divide: ['$present', '$total'] }, 100] }, 2] },
-            0,
-          ],
-        },
-      },
-    },
-    { $sort: { '_id.year': 1, '_id.month': 1 } },
-    {
-      $project: {
-        _id: 0,
-        year: '$_id.year',
-        month: '$_id.month',
-        total: 1,
-        present: 1,
-        absent: 1,
-        late: 1,
-        percentage: 1,
-      },
-    },
-  ]);
+  const rows = await prisma.$queryRaw`
+    SELECT
+      EXTRACT(YEAR FROM date)::int AS year,
+      EXTRACT(MONTH FROM date)::int AS month,
+      COUNT(*) AS total,
+      SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END) AS present,
+      SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END) AS absent,
+      SUM(CASE WHEN status = 'late' THEN 1 ELSE 0 END) AS late,
+      ROUND(
+        CASE WHEN COUNT(*) > 0
+          THEN (SUM(CASE WHEN status = 'present' THEN 1.0 ELSE 0 END) / COUNT(*)) * 100
+          ELSE 0
+        END, 2
+      ) AS percentage
+    FROM attendance
+    WHERE "studentId" = ${studentId}
+    GROUP BY year, month
+    ORDER BY year, month
+  `;
 
-  const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-  const withLabels = result.map((r) => ({
-    ...r,
-    month_label: MONTH_LABELS[r.month - 1],
+  const withLabels = rows.map((r) => ({
+    year: Number(r.year),
+    month: Number(r.month),
+    month_label: MONTH_LABELS[Number(r.month) - 1],
+    total: Number(r.total),
+    present: Number(r.present),
+    absent: Number(r.absent),
+    late: Number(r.late),
+    percentage: Number(r.percentage),
   }));
 
   return monthsBack ? withLabels.slice(-monthsBack) : withLabels;
 };
 
-/**
- * Gets week-wise attendance breakdown for a student (last N weeks).
- * Each entry represents one calendar week (Monday–Sunday).
- * @param {ObjectId} studentId
- * @param {Number} [weeksBack=8]
- * @returns {Array} [{ week_start, week_label, present, absent, late, total }]
- */
 const getStudentWeeklyAttendance = async (studentId, weeksBack = 8) => {
-  const result = await Attendance.aggregate([
-    { $match: { student_id: toObjectId(studentId) } },
-    {
-      // $dayOfWeek: 1=Sun, 2=Mon … 7=Sat
-      // We want Monday as first day of week.
-      // daysFromMonday: Sun→6, Mon→0, Tue→1 … Sat→5
-      $addFields: {
-        daysFromMonday: {
-          $mod: [
-            { $add: [{ $subtract: [{ $dayOfWeek: '$date' }, 2] }, 7] },
-            7,
-          ],
-        },
-      },
-    },
-    {
-      $addFields: {
-        week_start: {
-          $dateSubtract: {
-            startDate: {
-              $dateFromParts: {
-                year:  { $year:        '$date' },
-                month: { $month:       '$date' },
-                day:   { $dayOfMonth:  '$date' },
-              },
-            },
-            unit:   'day',
-            amount: '$daysFromMonday',
-          },
-        },
-      },
-    },
-    {
-      $group: {
-        _id:     '$week_start',
-        present: { $sum: { $cond: [{ $eq: ['$status', ATTENDANCE_STATUS.PRESENT] }, 1, 0] } },
-        absent:  { $sum: { $cond: [{ $eq: ['$status', ATTENDANCE_STATUS.ABSENT]  }, 1, 0] } },
-        late:    { $sum: { $cond: [{ $eq: ['$status', ATTENDANCE_STATUS.LATE]    }, 1, 0] } },
-        total:   { $sum: 1 },
-      },
-    },
-    { $sort: { _id: 1 } },
-    {
-      $project: {
-        _id: 0,
-        week_start: '$_id',
-        present: 1,
-        absent: 1,
-        late: 1,
-        total: 1,
-      },
-    },
-  ]);
+  const rows = await prisma.$queryRaw`
+    SELECT
+      date_trunc('week', date)::date AS week_start,
+      SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END) AS present,
+      SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END) AS absent,
+      SUM(CASE WHEN status = 'late' THEN 1 ELSE 0 END) AS late,
+      COUNT(*) AS total
+    FROM attendance
+    WHERE "studentId" = ${studentId}
+    GROUP BY week_start
+    ORDER BY week_start
+  `;
 
-  // Attach human-readable label e.g. "Jun 2 – Jun 8"
-  const fmt = (d) =>
-    new Date(d).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' });
+  const fmt = (d) => new Date(d).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' });
 
-  const formatted = result.map((r) => {
-    const end = new Date(r.week_start);
+  const formatted = rows.map((r) => {
+    const start = new Date(r.week_start);
+    const end = new Date(start);
     end.setDate(end.getDate() + 6);
-    return { ...r, week_label: `${fmt(r.week_start)} – ${fmt(end)}` };
+    return {
+      week_start: r.week_start,
+      week_label: `${fmt(start)} – ${fmt(end)}`,
+      present: Number(r.present),
+      absent: Number(r.absent),
+      late: Number(r.late),
+      total: Number(r.total),
+    };
   });
 
   return weeksBack ? formatted.slice(-weeksBack) : formatted;
 };
 
-/**
- * Gets attendance defaulters for a branch/year where percentage < threshold.
- */
 const getBranchDefaulters = async (branchId, year, threshold = 75) => {
-  const result = await Attendance.aggregate([
-    { $match: { branch_id: toObjectId(branchId) } },
-    {
-      $group: {
-        _id: '$student_id',
-        total:   { $sum: 1 },
-        present: { $sum: { $cond: [{ $eq: ['$status', ATTENDANCE_STATUS.PRESENT] }, 1, 0] } },
-      },
-    },
-    {
-      $addFields: {
-        percentage: {
-          $cond: [
-            { $gt: ['$total', 0] },
-            { $round: [{ $multiply: [{ $divide: ['$present', '$total'] }, 100] }, 2] },
-            0,
-          ],
-        },
-      },
-    },
-    {
-      $lookup: {
-        from: 'users',
-        localField: '_id',
-        foreignField: '_id',
-        as: 'student',
-      },
-    },
-    { $unwind: '$student' },
-    { $match: { 'student.year': Number(year) } },
-    { $match: { percentage: { $lt: Number(threshold) } } },
-    {
-      $project: {
-        student_id: '$_id',
-        student_name: '$student.name',
-        enrollment_number: '$student.enrollment_number',
-        total: 1,
-        present: 1,
-        percentage: 1,
-      },
-    },
-    { $sort: { percentage: 1 } },
-  ]);
-  return result;
+  const rows = await prisma.$queryRaw`
+    SELECT
+      a."studentId",
+      u.name AS student_name,
+      u."enrollmentNumber" AS enrollment_number,
+      COUNT(*) AS total,
+      SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) AS present,
+      ROUND(
+        CASE WHEN COUNT(*) > 0
+          THEN (SUM(CASE WHEN a.status = 'present' THEN 1.0 ELSE 0 END) / COUNT(*)) * 100
+          ELSE 0
+        END, 2
+      ) AS percentage
+    FROM attendance a
+    JOIN users u ON u.id = a."studentId"
+    WHERE a."branchId" = ${branchId}
+      AND u.year = ${year}
+    GROUP BY a."studentId", u.name, u."enrollmentNumber"
+    HAVING (SUM(CASE WHEN a.status = 'present' THEN 1.0 ELSE 0 END) / NULLIF(COUNT(*), 0)) * 100 < ${threshold}
+    ORDER BY percentage
+  `;
+
+  return rows.map((r) => ({
+    student_id: r.studentid,
+    student_name: r.student_name,
+    enrollment_number: r.enrollment_number,
+    total: Number(r.total),
+    present: Number(r.present),
+    percentage: Number(r.percentage),
+  }));
 };
 
 module.exports = {
   getStudentSubjectAttendance,
   getStudentOverallAttendance,
   getStudentMonthlyAttendance,
-  getStudentWeeklyAttendance,   // ← NEW export
+  getStudentWeeklyAttendance,
   getBranchDefaulters,
 };

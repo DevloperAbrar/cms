@@ -1,57 +1,74 @@
-const Notice = require('../models/Notice');
-const { NOTICE_TARGET_TYPE } = require('../config/constants');
+const prisma = require('../config/prismaClient');
 
-/**
- * Retrieves notices visible to a given user based on their role + scope.
- * @param {object} user - { _id, role, department_id, branch_id, year }
- * @returns {Array} notices
- */
 const getNoticesForUser = async (user) => {
   const now = new Date();
 
   const orConditions = [
-    { target_type: NOTICE_TARGET_TYPE.ALL },
-    { target_type: NOTICE_TARGET_TYPE.INDIVIDUAL, target_ids: user._id },
+    { targetType: 'all' },
+    { targetType: 'individual', targetIds: { has: user.id || user._id?.toString() } },
   ];
 
-  if (user.department_id) {
+  if (user.departmentId || user.department_id) {
     orConditions.push({
-      target_type: NOTICE_TARGET_TYPE.DEPARTMENT,
-      target_ids: user.department_id,
+      targetType: 'department',
+      targetIds: { has: (user.departmentId || user.department_id)?.toString() },
     });
   }
 
-  if (user.branch_id) {
-    orConditions.push({ target_type: NOTICE_TARGET_TYPE.BRANCH, target_ids: user.branch_id });
+  if (user.branchId || user.branch_id) {
+    orConditions.push({
+      targetType: 'branch',
+      targetIds: { has: (user.branchId || user.branch_id)?.toString() },
+    });
   }
 
   if (user.year) {
-    orConditions.push({ target_type: NOTICE_TARGET_TYPE.YEAR, target_ids: user.year });
+    orConditions.push({
+      targetType: 'year',
+      targetIds: { has: String(user.year) },
+    });
   }
 
-  const notices = await Notice.find({
-    $or: orConditions,
-    $and: [
-      { $or: [{ schedule_at: null }, { schedule_at: { $lte: now } }] },
-      { $or: [{ expires_at: null }, { expires_at: { $gte: now } }] },
-    ],
-  })
-    .populate('posted_by', 'name role')
-    .sort({ created_at: -1 })
-    .lean();
+  const notices = await prisma.notice.findMany({
+    where: {
+      collegeId: user.collegeId,
+      OR: orConditions,
+      AND: [
+        { OR: [{ scheduleAt: null }, { scheduleAt: { lte: now } }] },
+        { OR: [{ expiresAt: null }, { expiresAt: { gte: now } }] },
+      ],
+    },
+    include: {
+      postedBy: { select: { name: true, role: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
 
-  // Attach read status
+  const userId = (user.id || user._id)?.toString();
   return notices.map((n) => ({
     ...n,
-    is_read: n.read_by?.some((id) => id.toString() === user._id?.toString()) || false,
+    _id: n.id,
+    posted_by: n.postedBy ? { _id: n.postedById, name: n.postedBy.name, role: n.postedBy.role } : null,
+    is_read: n.readBy?.includes(userId) || false,
+    target_type: n.targetType,
+    target_ids: n.targetIds,
+    schedule_at: n.scheduleAt,
+    expires_at: n.expiresAt,
+    created_at: n.createdAt,
+    updated_at: n.updatedAt,
   }));
 };
 
-/**
- * Marks a notice as read by the user.
- */
 const markAsRead = async (noticeId, userId) => {
-  await Notice.findByIdAndUpdate(noticeId, { $addToSet: { read_by: userId } });
+  const notice = await prisma.notice.findUnique({ where: { id: noticeId } });
+  if (!notice) return;
+
+  if (!notice.readBy.includes(userId.toString())) {
+    await prisma.notice.update({
+      where: { id: noticeId },
+      data: { readBy: { push: userId.toString() } },
+    });
+  }
 };
 
 module.exports = { getNoticesForUser, markAsRead };

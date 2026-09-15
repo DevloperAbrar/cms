@@ -1,109 +1,83 @@
-const FinalResultConfig = require('../models/FinalResultConfig');
-const FinalResult = require('../models/FinalResult');
+const prisma = require('../config/prismaClient');
 const { getRankedResults } = require('../services/finalResult.service');
-const {
-  sendSuccess, sendError, sendBadRequest, sendNotFound,
-} = require('../utils/apiResponse');
-
+const { sendSuccess, sendError, sendBadRequest, sendNotFound } = require('../utils/apiResponse');
 
 exports.getPublishedConfigs = async (req, res) => {
   try {
-    const filter = { is_active: true };
-    if (req.query.year) filter.year = Number(req.query.year);
-    if (req.query.semester) filter.semester = Number(req.query.semester);
+    const where = { isActive: true };
+    if (req.user?.collegeId) where.collegeId = req.user.collegeId;
+    if (req.query.year) where.year = Number(req.query.year);
+    if (req.query.semester) where.semester = Number(req.query.semester);
 
-    const configs = await FinalResultConfig.find(filter).sort({ year: 1, semester: 1 }).lean();
+    const configs = await prisma.finalResultConfig.findMany({ where, orderBy: [{ year: 'asc' }, { semester: 'asc' }] });
 
-    // Only return configs that have at least one published result
-    const configIds = configs.map((c) => c._id);
-    const publishedConfigIds = await FinalResult.distinct('config_id', {
-      config_id: { $in: configIds },
-      is_published: true,
+    const configIds = configs.map((c) => c.id);
+    const publishedResults = await prisma.finalResult.findMany({
+      where: { configId: { in: configIds }, isPublished: true },
+      select: { configId: true },
+      distinct: ['configId'],
     });
 
-    const publishedSet = new Set(publishedConfigIds.map((id) => id.toString()));
-    const available = configs.filter((c) => publishedSet.has(c._id.toString()));
+    const publishedSet = new Set(publishedResults.map((r) => r.configId));
+    const available = configs.filter((c) => publishedSet.has(c.id));
 
-    return sendSuccess(res, available);
-  } catch (err) {
-    return sendError(res, err.message);
-  }
+    return sendSuccess(res, available.map((c) => ({ ...c, _id: c.id, is_active: c.isActive, metric_type: c.metricType })));
+  } catch (err) { return sendError(res, err.message); }
 };
-
 
 exports.getFinalResultRankings = async (req, res) => {
   try {
     const { config_id, scope = 'institute', branch_id, department_id, top } = req.query;
     if (!config_id) return sendBadRequest(res, 'config_id is required.');
 
-    const config = await FinalResultConfig.findById(config_id).lean();
+    const config = await prisma.finalResultConfig.findUnique({ where: { id: config_id } });
     if (!config) return sendNotFound(res, 'Config not found.');
 
-    // Build filter — all fields are optional; omitting them = broader scope
     const filter = {};
-    if (scope === 'branch' && branch_id) {
-      filter.branch_id = branch_id;
-    } else if (scope === 'department' && department_id) {
-      filter.department_id = department_id;
-    }
-    // scope === 'institute' OR scope with no id → no extra filter → all published results
+    if (scope === 'branch' && branch_id) filter.branch_id = branch_id;
+    else if (scope === 'department' && department_id) filter.department_id = department_id;
 
     let ranked = await getRankedResults(config_id, filter);
+    if (top) ranked = ranked.slice(0, Number(top));
 
-    if (top) {
-      ranked = ranked.slice(0, Number(top));
-    }
-
-    return sendSuccess(res, { config, results: ranked });
-  } catch (err) {
-    return sendError(res, err.message);
-  }
+    return sendSuccess(res, { config: { ...config, _id: config.id }, results: ranked });
+  } catch (err) { return sendError(res, err.message); }
 };
 
-/**
- * GET /student/final-results/mine?config_id=
- * Returns the student's own result + their rank in branch/dept/institute.
- */
 exports.getStudentOwnResult = async (req, res) => {
   try {
     const { config_id } = req.query;
     if (!config_id) return sendBadRequest(res, 'config_id is required.');
 
-    const studentId = req.user._id;
-
-    const myResult = await FinalResult.findOne({
-      config_id,
-      student_id: studentId,
-      is_published: true,
-    })
-      .populate('branch_id', 'name code')
-      .populate('department_id', 'name code')
-      .lean();
-
+    const myResult = await prisma.finalResult.findFirst({
+      where: { configId: config_id, studentId: req.user.id, isPublished: true },
+      include: {
+        branch: { select: { id: true, name: true, code: true } },
+        department: { select: { id: true, name: true, code: true } },
+      },
+    });
     if (!myResult) return sendNotFound(res, 'No published result found for you in this config.');
 
-    // Compute ranks
-    const [branchRank, deptRank, instituteRank] = await Promise.all([
-      FinalResult.countDocuments({ config_id, branch_id: myResult.branch_id._id, value: { $gt: myResult.value }, is_published: true }),
-      FinalResult.countDocuments({ config_id, department_id: myResult.department_id._id, value: { $gt: myResult.value }, is_published: true }),
-      FinalResult.countDocuments({ config_id, value: { $gt: myResult.value }, is_published: true }),
-    ]);
-
-    const [branchTotal, deptTotal, instituteTotal] = await Promise.all([
-      FinalResult.countDocuments({ config_id, branch_id: myResult.branch_id._id, is_published: true }),
-      FinalResult.countDocuments({ config_id, department_id: myResult.department_id._id, is_published: true }),
-      FinalResult.countDocuments({ config_id, is_published: true }),
+    const [branchRank, deptRank, instituteRank, branchTotal, deptTotal, instituteTotal] = await Promise.all([
+      prisma.finalResult.count({ where: { configId: config_id, branchId: myResult.branchId, value: { gt: myResult.value }, isPublished: true } }),
+      prisma.finalResult.count({ where: { configId: config_id, departmentId: myResult.departmentId, value: { gt: myResult.value }, isPublished: true } }),
+      prisma.finalResult.count({ where: { configId: config_id, value: { gt: myResult.value }, isPublished: true } }),
+      prisma.finalResult.count({ where: { configId: config_id, branchId: myResult.branchId, isPublished: true } }),
+      prisma.finalResult.count({ where: { configId: config_id, departmentId: myResult.departmentId, isPublished: true } }),
+      prisma.finalResult.count({ where: { configId: config_id, isPublished: true } }),
     ]);
 
     return sendSuccess(res, {
-      result: myResult,
+      result: {
+        ...myResult, _id: myResult.id, is_published: myResult.isPublished, published_at: myResult.publishedAt,
+        branch_id: myResult.branch ? { _id: myResult.branchId, name: myResult.branch.name, code: myResult.branch.code } : myResult.branchId,
+        department_id: myResult.department ? { _id: myResult.departmentId, name: myResult.department.name, code: myResult.department.code } : myResult.departmentId,
+      },
       ranks: {
         branch: { rank: branchRank + 1, total: branchTotal },
         department: { rank: deptRank + 1, total: deptTotal },
         institute: { rank: instituteRank + 1, total: instituteTotal },
       },
     });
-  } catch (err) {
-    return sendError(res, err.message);
-  }
+  } catch (err) { return sendError(res, err.message); }
 };

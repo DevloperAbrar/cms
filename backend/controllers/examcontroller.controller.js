@@ -1,186 +1,105 @@
-const User = require('../models/User');
-const Marks = require('../models/Marks');
-const ExamPattern = require('../models/ExamPattern');
-const {
-  sendSuccess,
-  sendError,
-  sendNotFound,
-  sendBadRequest,
-  sendForbidden,
-} = require('../utils/apiResponse');
-const { ROLES, USER_STATUS } = require('../config/constants');
+const prisma = require('../config/prismaClient');
+const { sendSuccess, sendError, sendNotFound, sendBadRequest, sendForbidden } = require('../utils/apiResponse');
+const { ROLES } = require('../config/constants');
 const { upsertMarks } = require('../services/marks.service');
 const { parseMarksCSV } = require('../services/csv.service');
 const { generateMarksCSVTemplate } = require('../utils/csvTemplateGenerator');
-const logger = require('../utils/logger');
-// ─── FINAL RESULTS (Exam Controller) ─────────────────────────────────────────
-const FinalResultConfig = require('../models/FinalResultConfig');
-const FinalResult = require('../models/FinalResult');
-const Branch = require('../models/Branch');
-const Department = require('../models/Department');
-const Stream = require('../models/Stream');
 const { upsertResult, publishResults, unpublishResults } = require('../services/finalResult.service');
+const logger = require('../utils/logger');
 
-/**
- * GET /api/examcontroller/subjects
- * Returns all subjects (institute-wide) for end-sem marks entry.
- */
 exports.getAllSubjects = async (req, res) => {
   try {
-    const Subject = require('../models/Subject');
     const { branch_id, year, semester } = req.query;
-    const filter = { status: 'active' };
-    if (branch_id) filter.branch_id = branch_id;
-    if (year) filter.year = Number(year);
-    if (semester) filter.semester = Number(semester);
+    const where = { status: 'active', collegeId: req.user.collegeId };
+    if (branch_id) where.branchId = branch_id;
+    if (year) where.year = Number(year);
+    if (semester) where.semester = Number(semester);
 
-    const subjects = await Subject.find(filter)
-      .populate('branch_id', 'name code')
-      .sort({ name: 1 })
-      .lean();
-
-    return sendSuccess(res, subjects);
-  } catch (err) {
-    return sendError(res, err.message);
-  }
+    const subjects = await prisma.subject.findMany({
+      where, include: { branch: { select: { id: true, name: true, code: true } } }, orderBy: { name: 'asc' },
+    });
+    return sendSuccess(res, subjects.map((s) => ({ ...s, _id: s.id, branch_id: s.branch ? { _id: s.branchId, name: s.branch.name, code: s.branch.code } : s.branchId })));
+  } catch (err) { return sendError(res, err.message); }
 };
 
-/**
- * GET /api/examcontroller/branches
- * Returns all branches (institute-wide) for selection.
- */
 exports.getAllBranches = async (req, res) => {
   try {
-    const Branch = require('../models/Branch');
-    const branches = await Branch.find({ status: 'active' })
-      .populate('department_id', 'name code')
-      .sort({ name: 1 })
-      .lean();
-    return sendSuccess(res, branches);
-  } catch (err) {
-    return sendError(res, err.message);
-  }
+    const branches = await prisma.branch.findMany({
+      where: { collegeId: req.user.collegeId, status: 'active' },
+      include: { department: { select: { id: true, name: true, code: true } } },
+      orderBy: { name: 'asc' },
+    });
+    return sendSuccess(res, branches.map((b) => ({ ...b, _id: b.id, department_id: b.department ? { _id: b.departmentId, name: b.department.name, code: b.department.code } : b.departmentId })));
+  } catch (err) { return sendError(res, err.message); }
 };
 
-/**
- * GET /api/examcontroller/students
- * Returns students for a branch+year (institute-wide).
- */
 exports.getStudents = async (req, res) => {
   try {
     const { branch_id, year } = req.query;
     if (!branch_id || !year) return sendBadRequest(res, 'branch_id and year are required.');
 
-    const students = await User.find({
-      branch_id,
-      year: Number(year),
-      role: ROLES.STUDENT,
-      status: USER_STATUS.ACTIVE,
-    })
-      .select('name email enrollment_number section')
-      .sort({ name: 1 })
-      .lean();
-
-    return sendSuccess(res, students);
-  } catch (err) {
-    return sendError(res, err.message);
-  }
+    const students = await prisma.user.findMany({
+      where: { branchId: branch_id, year: Number(year), role: 'student', status: 'active' },
+      select: { id: true, name: true, email: true, enrollmentNumber: true, section: true },
+      orderBy: { name: 'asc' },
+    });
+    return sendSuccess(res, students.map((s) => ({ _id: s.id, ...s, enrollment_number: s.enrollmentNumber })));
+  } catch (err) { return sendError(res, err.message); }
 };
 
-/**
- * GET /api/examcontroller/marks
- * Returns existing end-sem marks for a subject+branch+year+component.
- */
 exports.getMarksEntries = async (req, res) => {
   try {
     const { subject_id, branch_id, year, semester, exam_component_id } = req.query;
 
-    const students = await User.find({
-      branch_id,
-      year: Number(year),
-      role: ROLES.STUDENT,
-      status: USER_STATUS.ACTIVE,
-    })
-      .select('name enrollment_number')
-      .sort({ name: 1 })
-      .lean();
+    const students = await prisma.user.findMany({
+      where: { branchId: branch_id, year: Number(year), role: 'student', status: 'active' },
+      select: { id: true, name: true, enrollmentNumber: true },
+      orderBy: { name: 'asc' },
+    });
 
-    const marksList = await Marks.find({
-      subject_id,
-      branch_id,
-      year: Number(year),
-      semester: Number(semester),
-      exam_component_id,
-    }).lean();
+    const marksList = await prisma.marks.findMany({
+      where: { subjectId: subject_id, branchId: branch_id, year: Number(year), semester: Number(semester), examComponentId: exam_component_id },
+    });
 
     const marksMap = {};
-    for (const m of marksList) marksMap[m.student_id.toString()] = m;
+    for (const m of marksList) marksMap[m.studentId] = m;
 
-    const result = students.map((s) => ({
-      ...s,
-      marks: marksMap[s._id.toString()] || null,
-    }));
-
-    return sendSuccess(res, result);
-  } catch (err) {
-    return sendError(res, err.message);
-  }
+    return sendSuccess(res, students.map((s) => ({ _id: s.id, name: s.name, enrollment_number: s.enrollmentNumber, marks: marksMap[s.id] || null })));
+  } catch (err) { return sendError(res, err.message); }
 };
 
-/**
- * POST /api/examcontroller/marks
- * Submit end-sem marks (portal entry).
- * Validates the component is entered_by = examcontroller.
- * If coordinator already submitted → warns but allows overwrite on confirm.
- */
 exports.submitEndSemMarks = async (req, res) => {
   try {
-    const { subject_id, branch_id, year, semester, exam_component_id, entries, confirm_overwrite } = req.body;
+    const { subject_id, branch_id, year, semester, exam_component_id, entries, confirm_overwrite, academic_session_id } = req.body;
 
-    // Validate component is end-sem type
-    const pattern = await ExamPattern.findOne({ 'components._id': exam_component_id });
-    if (!pattern) return sendNotFound(res, 'Exam pattern not found.');
+    const pattern = await prisma.examPattern.findFirst({
+      where: { collegeId: req.user.collegeId },
+      include: { components: true },
+    });
 
-    const component = pattern.components.id(exam_component_id);
-    if (!component) return sendNotFound(res, 'Component not found in pattern.');
-
-    if (!['examcontroller', 'coordinator'].includes(component.entered_by)) {
-      return sendForbidden(res, 'This component is not designated for end-sem entry.');
+    if (pattern) {
+      const component = pattern.components.find((c) => c.id === exam_component_id);
+      if (component && !['examcontroller', 'coordinator'].includes(component.enteredBy)) {
+        return sendForbidden(res, 'This component is not designated for end-sem entry.');
+      }
     }
 
-    // Check if coordinator already submitted for this branch+subject
-    const coordinatorSubmission = await Marks.findOne({
-      subject_id,
-      branch_id,
-      year: Number(year),
-      semester: Number(semester),
-      exam_component_id,
-    }).populate('submitted_by', 'role');
+    const coordinatorSubmission = await prisma.marks.findFirst({
+      where: { subjectId: subject_id, branchId: branch_id, year: Number(year), semester: Number(semester), examComponentId: exam_component_id },
+      include: { submittedBy: { select: { role: true } } },
+    });
 
-    if (
-      coordinatorSubmission?.submitted_by?.role === 'coordinator' &&
-      !confirm_overwrite
-    ) {
-      return sendSuccess(
-        res,
-        { requires_confirmation: true },
-        'Coordinator has already submitted marks for this branch and subject. Set confirm_overwrite=true to proceed.'
-      );
+    if (coordinatorSubmission?.submittedBy?.role === 'coordinator' && !confirm_overwrite) {
+      return sendSuccess(res, { requires_confirmation: true }, 'Coordinator has already submitted marks for this branch and subject. Set confirm_overwrite=true to proceed.');
     }
 
     const results = [];
     for (const entry of entries) {
       const marks = await upsertMarks({
-        studentId: entry.student_id,
-        subjectId: subject_id,
-        branchId: branch_id,
-        year: Number(year),
-        semester: Number(semester),
-        examComponentId: exam_component_id,
-        totalMarks: entry.total_marks,
-        maxMarks: entry.max_marks,
-        subFieldEntries: [],
-        submittedBy: req.user._id,
+        collegeId: req.user.collegeId, studentId: entry.student_id, subjectId: subject_id, branchId: branch_id,
+        academicSessionId: academic_session_id, year: Number(year), semester: Number(semester),
+        examComponentId: exam_component_id, totalMarks: entry.total_marks, maxMarks: entry.max_marks,
+        subFieldEntries: [], submittedBy: req.user.id,
       });
       results.push(marks);
     }
@@ -192,265 +111,155 @@ exports.submitEndSemMarks = async (req, res) => {
   }
 };
 
-/**
- * GET /api/examcontroller/marks/template
- * Download CSV template for end-sem marks.
- */
 exports.downloadMarksTemplate = async (req, res) => {
   try {
     const { branch_id, year } = req.query;
-
-    const students = await User.find({
-      branch_id,
-      year: Number(year),
-      role: ROLES.STUDENT,
-      status: USER_STATUS.ACTIVE,
-    })
-      .select('name enrollment_number')
-      .lean();
-
-    const buffer = generateMarksCSVTemplate(students, []);
+    const students = await prisma.user.findMany({
+      where: { branchId: branch_id, year: Number(year), role: 'student', status: 'active' },
+      select: { id: true, name: true, enrollmentNumber: true },
+    });
+    const buffer = generateMarksCSVTemplate(students.map((s) => ({ ...s, enrollment_number: s.enrollmentNumber })), []);
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename="endsem_template.csv"');
     return res.send(buffer);
-  } catch (err) {
-    return sendError(res, err.message);
-  }
+  } catch (err) { return sendError(res, err.message); }
 };
 
-/**
- * POST /api/examcontroller/marks/upload
- * Upload end-sem marks via CSV.
- */
 exports.uploadMarksCSV = async (req, res) => {
   try {
     if (!req.file) return sendBadRequest(res, 'CSV file required.');
-
-    const { subject_id, branch_id, year, semester, exam_component_id } = req.body;
+    const { subject_id, branch_id, year, semester, exam_component_id, academic_session_id } = req.body;
     const rows = await parseMarksCSV(req.file.buffer);
 
-    const students = await User.find({ branch_id, year: Number(year), role: ROLES.STUDENT })
-      .select('enrollment_number')
-      .lean();
+    const students = await prisma.user.findMany({
+      where: { branchId: branch_id, year: Number(year), role: 'student' },
+      select: { id: true, enrollmentNumber: true },
+    });
 
     const enrollMap = {};
-    for (const s of students) enrollMap[s.enrollment_number] = s._id;
+    for (const s of students) enrollMap[s.enrollmentNumber] = s.id;
 
     const errors = [];
     const results = [];
-
     for (const row of rows) {
       const studentId = enrollMap[row.enrollment_no];
-      if (!studentId) {
-        errors.push({ enrollment_no: row.enrollment_no, error: 'Student not found' });
-        continue;
-      }
+      if (!studentId) { errors.push({ enrollment_no: row.enrollment_no, error: 'Student not found' }); continue; }
       try {
         const marks = await upsertMarks({
-          studentId,
-          subjectId: subject_id,
-          branchId: branch_id,
-          year: Number(year),
-          semester: Number(semester),
-          examComponentId: exam_component_id,
-          totalMarks: row.marks_obtained,
-          maxMarks: row.max_marks,
-          subFieldEntries: [],
-          submittedBy: req.user._id,
+          collegeId: req.user.collegeId, studentId, subjectId: subject_id, branchId: branch_id, academicSessionId: academic_session_id,
+          year: Number(year), semester: Number(semester), examComponentId: exam_component_id,
+          totalMarks: row.marks_obtained, maxMarks: row.max_marks, subFieldEntries: [], submittedBy: req.user.id,
         });
         results.push(marks);
-      } catch (e) {
-        errors.push({ enrollment_no: row.enrollment_no, error: e.message });
-      }
+      } catch (e) { errors.push({ enrollment_no: row.enrollment_no, error: e.message }); }
     }
 
     return sendSuccess(res, { imported: results.length, errors }, 'CSV marks processed.');
-  } catch (err) {
-    return sendError(res, err.message);
-  }
+  } catch (err) { return sendError(res, err.message); }
 };
 
-
-
-
-
-
-/**
- * GET /examcontroller/final-results/configs
- * Returns all active configs (institute-wide, no year restriction).
- */
 exports.getFinalResultConfigs = async (req, res) => {
   try {
-    const filter = { is_active: true };
-    if (req.query.year) filter.year = Number(req.query.year);
-    if (req.query.semester) filter.semester = Number(req.query.semester);
-    const configs = await FinalResultConfig.find(filter).sort({ year: 1, semester: 1 }).lean();
-    return sendSuccess(res, configs);
-  } catch (err) {
-    return sendError(res, err.message);
-  }
+    const where = { isActive: true, collegeId: req.user.collegeId };
+    if (req.query.year) where.year = Number(req.query.year);
+    if (req.query.semester) where.semester = Number(req.query.semester);
+    const configs = await prisma.finalResultConfig.findMany({ where, orderBy: [{ year: 'asc' }, { semester: 'asc' }] });
+    return sendSuccess(res, configs.map((c) => ({ ...c, _id: c.id, is_active: c.isActive, metric_type: c.metricType, passing_value: c.passingValue, max_value: c.maxValue })));
+  } catch (err) { return sendError(res, err.message); }
 };
 
-/**
- * GET /examcontroller/final-results/streams
- * Returns all streams for the filter cascade.
- */
 exports.getFinalResultStreams = async (req, res) => {
   try {
-    const streams = await Stream.find().sort({ name: 1 }).lean();
-    return sendSuccess(res, streams);
-  } catch (err) {
-    return sendError(res, err.message);
-  }
+    const streams = await prisma.stream.findMany({ where: { collegeId: req.user.collegeId }, orderBy: { name: 'asc' } });
+    return sendSuccess(res, streams.map((s) => ({ ...s, _id: s.id })));
+  } catch (err) { return sendError(res, err.message); }
 };
 
-/**
- * GET /examcontroller/final-results/departments?stream_id=
- */
 exports.getFinalResultDepartments = async (req, res) => {
   try {
-    const filter = {};
-    if (req.query.stream_id) filter.stream_id = req.query.stream_id;
-    const departments = await Department.find(filter)
-      .populate('stream_id', 'name')
-      .sort({ name: 1 })
-      .lean();
-    return sendSuccess(res, departments);
-  } catch (err) {
-    return sendError(res, err.message);
-  }
+    const where = { collegeId: req.user.collegeId };
+    if (req.query.stream_id) where.streamId = req.query.stream_id;
+    const departments = await prisma.department.findMany({ where, include: { stream: { select: { name: true } } }, orderBy: { name: 'asc' } });
+    return sendSuccess(res, departments.map((d) => ({ ...d, _id: d.id, stream_id: d.stream ? { _id: d.streamId, name: d.stream.name } : d.streamId })));
+  } catch (err) { return sendError(res, err.message); }
 };
 
-/**
- * GET /examcontroller/final-results/branches?department_id=
- */
 exports.getFinalResultBranches = async (req, res) => {
   try {
-    const filter = {};
-    if (req.query.department_id) filter.department_id = req.query.department_id;
-    const branches = await Branch.find(filter)
-      .populate('department_id', 'name')
-      .sort({ name: 1 })
-      .lean();
-    return sendSuccess(res, branches);
-  } catch (err) {
-    return sendError(res, err.message);
-  }
+    const where = { collegeId: req.user.collegeId };
+    if (req.query.department_id) where.departmentId = req.query.department_id;
+    const branches = await prisma.branch.findMany({ where, include: { department: { select: { name: true } } }, orderBy: { name: 'asc' } });
+    return sendSuccess(res, branches.map((b) => ({ ...b, _id: b.id, department_id: b.department ? { _id: b.departmentId, name: b.department.name } : b.departmentId })));
+  } catch (err) { return sendError(res, err.message); }
 };
 
-/**
- * GET /examcontroller/final-results/students?config_id=&branch_id=
- * Returns students for a branch+year matching the config, with existing result values.
- */
 exports.getFinalResultStudents = async (req, res) => {
   try {
     const { config_id, branch_id } = req.query;
     if (!config_id || !branch_id) return sendBadRequest(res, 'config_id and branch_id are required.');
 
-    const config = await FinalResultConfig.findById(config_id).lean();
+    const config = await prisma.finalResultConfig.findUnique({ where: { id: config_id } });
     if (!config) return sendNotFound(res, 'Config not found.');
 
-    const students = await User.find({
-      branch_id,
-      year: config.year,
-      semester: config.semester,
-      role: ROLES.STUDENT,
-      status: USER_STATUS.ACTIVE,
-    })
-      .select('name enrollment_number year semester branch_id department_id')
-      .sort({ name: 1 })
-      .lean();
+    const students = await prisma.user.findMany({
+      where: { branchId: branch_id, year: config.year, role: 'student', status: 'active' },
+      select: { id: true, name: true, enrollmentNumber: true, year: true, semester: true, branchId: true, departmentId: true },
+      orderBy: { name: 'asc' },
+    });
 
-    const studentIds = students.map((s) => s._id);
-    const existingResults = await FinalResult.find({
-      config_id,
-      student_id: { $in: studentIds },
-    }).lean();
+    const studentIds = students.map((s) => s.id);
+    const existingResults = await prisma.finalResult.findMany({ where: { configId: config_id, studentId: { in: studentIds } } });
 
     const resultMap = {};
-    existingResults.forEach((r) => { resultMap[r.student_id.toString()] = r; });
+    existingResults.forEach((r) => { resultMap[r.studentId] = r; });
 
-    const enriched = students.map((s) => ({
-      ...s,
-      result: resultMap[s._id.toString()] || null,
-    }));
-
-    return sendSuccess(res, { config, students: enriched });
-  } catch (err) {
-    return sendError(res, err.message);
-  }
+    return sendSuccess(res, {
+      config: { ...config, _id: config.id, is_active: config.isActive, metric_type: config.metricType, max_value: config.maxValue, passing_value: config.passingValue },
+      students: students.map((s) => ({ _id: s.id, ...s, enrollment_number: s.enrollmentNumber, result: resultMap[s.id] || null })),
+    });
+  } catch (err) { return sendError(res, err.message); }
 };
 
-/**
- * POST /examcontroller/final-results/submit
- * Body: { config_id, branch_id, entries: [{ student_id, value }] }
- */
 exports.submitFinalResults = async (req, res) => {
   try {
     const { config_id, branch_id, entries } = req.body;
-    if (!config_id || !branch_id || !Array.isArray(entries) || entries.length === 0) {
-      return sendBadRequest(res, 'config_id, branch_id, and entries[] are required.');
-    }
+    if (!config_id || !branch_id || !Array.isArray(entries) || entries.length === 0) return sendBadRequest(res, 'config_id, branch_id, and entries[] are required.');
 
-    const config = await FinalResultConfig.findById(config_id).lean();
+    const config = await prisma.finalResultConfig.findUnique({ where: { id: config_id } });
     if (!config) return sendNotFound(res, 'Config not found.');
 
-    const branch = await Branch.findById(branch_id).lean();
+    const branch = await prisma.branch.findUnique({ where: { id: branch_id } });
     if (!branch) return sendNotFound(res, 'Branch not found.');
 
     for (const e of entries) {
-      if (e.value < 0 || e.value > config.max_value) {
-        return sendBadRequest(res, `Value ${e.value} exceeds max ${config.max_value} for "${config.label}".`);
-      }
+      if (e.value < 0 || e.value > config.maxValue) return sendBadRequest(res, `Value ${e.value} exceeds max ${config.maxValue} for "${config.label}".`);
     }
 
     const saved = await Promise.all(
-      entries.map((e) =>
-        upsertResult({
-          configId: config_id,
-          studentId: e.student_id,
-          branchId: branch_id,
-          departmentId: branch.department_id,
-          year: config.year,
-          semester: config.semester,
-          value: Number(e.value),
-          submittedBy: req.user._id,
-        })
-      )
+      entries.map((e) => upsertResult({
+        collegeId: req.user.collegeId, configId: config_id, studentId: e.student_id, branchId: branch_id,
+        departmentId: branch.departmentId, year: config.year, semester: config.semester, value: Number(e.value), submittedBy: req.user.id,
+      }))
     );
 
     return sendSuccess(res, { saved: saved.length }, `${saved.length} results saved.`);
-  } catch (err) {
-    return sendError(res, err.message);
-  }
+  } catch (err) { return sendError(res, err.message); }
 };
 
-/**
- * POST /examcontroller/final-results/publish
- * Body: { config_id, branch_id }
- */
 exports.publishFinalResults = async (req, res) => {
   try {
     const { config_id, branch_id } = req.body;
     if (!config_id || !branch_id) return sendBadRequest(res, 'config_id and branch_id are required.');
     const result = await publishResults(config_id, branch_id);
-    return sendSuccess(res, { modified: result.modifiedCount }, 'Results published.');
-  } catch (err) {
-    return sendError(res, err.message);
-  }
+    return sendSuccess(res, { modified: result.count }, 'Results published.');
+  } catch (err) { return sendError(res, err.message); }
 };
 
-/**
- * POST /examcontroller/final-results/unpublish
- * Body: { config_id, branch_id }
- */
 exports.unpublishFinalResults = async (req, res) => {
   try {
     const { config_id, branch_id } = req.body;
     if (!config_id || !branch_id) return sendBadRequest(res, 'config_id and branch_id are required.');
     const result = await unpublishResults(config_id, branch_id);
-    return sendSuccess(res, { modified: result.modifiedCount }, 'Results unpublished.');
-  } catch (err) {
-    return sendError(res, err.message);
-  }
+    return sendSuccess(res, { modified: result.count }, 'Results unpublished.');
+  } catch (err) { return sendError(res, err.message); }
 };

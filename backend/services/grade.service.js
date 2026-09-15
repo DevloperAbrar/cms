@@ -1,38 +1,29 @@
-const Marks = require('../models/Marks');
-const ExamPattern = require('../models/ExamPattern');
+const prisma = require('../config/prismaClient');
 
-/**
- * Calculates SGPA for a student for a given semester.
- * Uses weighted average of components marked include_in_sgpa=true.
- * @param {ObjectId} studentId
- * @param {ObjectId} branchId  (used to find stream for ExamPattern)
- * @param {number} year
- * @param {number} semester
- * @param {ObjectId} streamId
- * @returns {{ sgpa: number, components: Array }}
- */
 const calculateSGPA = async (studentId, streamId, year, semester) => {
-  const pattern = await ExamPattern.findOne({ stream_id: streamId, year, semester });
+  const pattern = await prisma.examPattern.findFirst({
+    where: { streamId, year, semester },
+    include: { components: true },
+  });
+
   if (!pattern) return { sgpa: null, components: [] };
 
-  const allMarks = await Marks.find({ student_id: studentId, year, semester });
+  const allMarks = await prisma.marks.findMany({
+    where: { studentId, year, semester },
+  });
 
   let totalWeightedMarks = 0;
   let totalWeightage = 0;
   const componentSummary = [];
 
   for (const component of pattern.components) {
-    if (!component.include_in_sgpa) continue;
+    if (!component.includeInSgpa) continue;
 
-    const marksDoc = allMarks.find(
-      (m) => m.exam_component_id.toString() === component._id.toString()
-    );
+    const marksDoc = allMarks.find((m) => m.examComponentId === component.id);
+    const obtained = marksDoc ? marksDoc.totalMarks : 0;
+    const maxMarks = component.maxMarks;
+    const weightage = component.weightagePercent;
 
-    const obtained = marksDoc ? marksDoc.total_marks : 0;
-    const maxMarks = component.max_marks;
-    const weightage = component.weightage_percent;
-
-    // Proportional contribution: (obtained / maxMarks) * weightage
     const contribution = maxMarks > 0 ? (obtained / maxMarks) * weightage : 0;
     totalWeightedMarks += contribution;
     totalWeightage += weightage;
@@ -46,7 +37,6 @@ const calculateSGPA = async (studentId, streamId, year, semester) => {
     });
   }
 
-  // Scale to 10-point SGPA
   const sgpa =
     totalWeightage > 0
       ? parseFloat(((totalWeightedMarks / totalWeightage) * 10).toFixed(2))
@@ -55,23 +45,14 @@ const calculateSGPA = async (studentId, streamId, year, semester) => {
   return { sgpa, components: componentSummary };
 };
 
-/**
- * Calculates CGPA as average of all semester SGPAs.
- * @param {ObjectId} studentId
- * @param {ObjectId} streamId
- * @param {number} maxYear
- * @param {number} semestersPerYear - typically 2
- * @returns {{ cgpa: number, semesters: Array }}
- */
 const calculateCGPA = async (studentId, streamId, maxYear = 4, semestersPerYear = 2) => {
   const semesterResults = [];
 
   for (let y = 1; y <= maxYear; y++) {
     for (let s = 1; s <= semestersPerYear; s++) {
-      const semester = (y - 1) * semestersPerYear + s;
-      const result = await calculateSGPA(studentId, streamId, y, semester);
+      const result = await calculateSGPA(studentId, streamId, y, s);
       if (result.sgpa !== null) {
-        semesterResults.push({ year: y, semester, sgpa: result.sgpa });
+        semesterResults.push({ year: y, semester: s, sgpa: result.sgpa });
       }
     }
   }

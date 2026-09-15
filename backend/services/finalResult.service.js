@@ -1,64 +1,54 @@
-const FinalResult = require('../models/FinalResult');
-const FinalResultConfig = require('../models/FinalResultConfig');
-const User = require('../models/User');
+const prisma = require('../config/prismaClient');
 
-/**
- * Fetch published results for a config, enriched with student info,
- * sorted descending by value, with rank assigned.
- */
 const getRankedResults = async (configId, filter = {}) => {
-  const query = { config_id: configId, is_published: true, ...filter };
-  const results = await FinalResult.find(query)
-    .populate('student_id', 'name enrollment_number branch_id department_id year semester')
-    .populate('branch_id', 'name code')
-    .populate('department_id', 'name code')
-    .sort({ value: -1 })
-    .lean();
+  const where = { configId, isPublished: true };
+  if (filter.branch_id || filter.branchId) where.branchId = filter.branch_id || filter.branchId;
+  if (filter.department_id || filter.departmentId) where.departmentId = filter.department_id || filter.departmentId;
 
-  return results.map((r, idx) => ({ ...r, rank: idx + 1 }));
-};
-
-/**
- * Upsert a single student result (coordinator save).
- */
-const upsertResult = async ({ configId, studentId, branchId, departmentId, year, semester, value, submittedBy }) => {
-  const result = await FinalResult.findOneAndUpdate(
-    { config_id: configId, student_id: studentId },
-    {
-      $set: {
-        branch_id: branchId,
-        department_id: departmentId,
-        year,
-        semester,
-        value,
-        submitted_by: submittedBy,
-      },
+  const results = await prisma.finalResult.findMany({
+    where,
+    include: {
+      config: true,
+      student: { select: { name: true, enrollmentNumber: true, branchId: true, departmentId: true, year: true, semester: true } },
+      branch: { select: { name: true, code: true } },
+      department: { select: { name: true, code: true } },
     },
-    { upsert: true, new: true, setDefaultsOnInsert: true }
-  );
+    orderBy: { value: 'desc' },
+  });
+
+  return results.map((r, idx) => ({
+    ...r,
+    rank: idx + 1,
+    _id: r.id,
+    student_id: { _id: r.studentId, name: r.student?.name, enrollment_number: r.student?.enrollmentNumber },
+    branch_id: r.branch ? { _id: r.branchId, name: r.branch.name, code: r.branch.code } : r.branchId,
+    department_id: r.department ? { _id: r.departmentId, name: r.department.name, code: r.department.code } : r.departmentId,
+    is_published: r.isPublished,
+    published_at: r.publishedAt,
+  }));
+};
+
+const upsertResult = async ({ configId, studentId, branchId, departmentId, year, semester, value, submittedBy, collegeId }) => {
+  const result = await prisma.finalResult.upsert({
+    where: { configId_studentId: { configId, studentId } },
+    update: { branchId, departmentId, year, semester, value, submittedById: submittedBy },
+    create: { collegeId, configId, studentId, branchId, departmentId, year, semester, value, submittedById: submittedBy },
+  });
   return result;
 };
 
-/**
- * Publish all results for a config scoped to a branch (coordinator action).
- */
 const publishResults = async (configId, branchId) => {
-  const result = await FinalResult.updateMany(
-    { config_id: configId, branch_id: branchId },
-    { $set: { is_published: true, published_at: new Date() } }
-  );
-  return result;
+  return prisma.finalResult.updateMany({
+    where: { configId, branchId },
+    data: { isPublished: true, publishedAt: new Date() },
+  });
 };
 
-/**
- * Unpublish all results for a config scoped to a branch.
- */
 const unpublishResults = async (configId, branchId) => {
-  const result = await FinalResult.updateMany(
-    { config_id: configId, branch_id: branchId },
-    { $set: { is_published: false, published_at: null } }
-  );
-  return result;
+  return prisma.finalResult.updateMany({
+    where: { configId, branchId },
+    data: { isPublished: false, publishedAt: null },
+  });
 };
 
 module.exports = { getRankedResults, upsertResult, publishResults, unpublishResults };
