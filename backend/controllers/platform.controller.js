@@ -201,6 +201,41 @@ async function purgeCollege(req, res) {
   return res.json({ success: true, message: 'College purged' });
 }
 
+async function updateCollege(req, res) {
+  const { collegeId } = req.params;
+  const { name, code, contactEmail, contactPhone, subscriptionPlan } = req.body;
+
+  const college = await prisma.college.findUnique({ where: { id: collegeId } });
+  if (!college) return res.status(404).json({ success: false, message: 'College not found' });
+
+  try {
+    const updated = await prisma.$transaction(async (tx) => {
+      const c = await tx.college.update({
+        where: { id: collegeId },
+        data: {
+          ...(name !== undefined ? { name } : {}),
+          ...(code !== undefined ? { code: code.toLowerCase().trim() } : {}),
+          ...(contactEmail !== undefined ? { contactEmail } : {}),
+          ...(contactPhone !== undefined ? { contactPhone } : {}),
+          ...(subscriptionPlan !== undefined ? { subscriptionPlan } : {}),
+        },
+      });
+      await tx.subscriptionEvent.create({
+        data: { collegeId, action: 'details_updated', actor: 'platform_owner' },
+      });
+      return c;
+    });
+
+    return res.json({ success: true, data: updated });
+  } catch (err) {
+    if (err.code === 'P2002') {
+      return res.status(409).json({ success: false, message: 'That college code is already in use' });
+    }
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Failed to update college' });
+  }
+}
+
 async function listColleges(req, res) {
   const colleges = await prisma.college.findMany({
     orderBy: { createdAt: 'desc' },
@@ -222,7 +257,7 @@ function generateRandomPassword(length = 14) {
 
 /**
  * Resets a college's SuperAdmin email/password. If newPassword isn't given,
- * a random one is generated and returned ONCE in the response — it is never
+ * a random one is generated and returned ONCE in the response, it is never
  * stored or logged in plaintext anywhere.
  */
 async function regenerateSuperAdminPassword(req, res) {
@@ -263,7 +298,7 @@ async function regenerateSuperAdminPassword(req, res) {
         email: updated.email,
         generatedPassword: newPassword ? undefined : passwordToSet,
       },
-      message: 'Credentials regenerated. Store this password now — it will not be shown again.',
+      message: 'Credentials regenerated. Store this password now, it will not be shown again.',
     });
   } catch (err) {
     if (err.code === 'P2002') {
@@ -277,6 +312,7 @@ async function regenerateSuperAdminPassword(req, res) {
 module.exports = {
   login,
   createCollege,
+  updateCollege,
   renewSubscription,
   suspendCollege,
   softDeleteCollege,

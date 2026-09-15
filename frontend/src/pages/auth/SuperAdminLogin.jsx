@@ -103,7 +103,7 @@ const SuperAdminLogin = () => {
             lineHeight: 1.7,
             marginBottom: 48,
           }}>
-            All-in-one academic platform — manage attendance, marks, results & certificates with real-time parent connect and student progress tracking.
+            All-in-one academic platform, manage attendance, marks, results & certificates with real-time parent connect and student progress tracking.
           </p>
 
           {/* Feature pills */}
@@ -177,11 +177,53 @@ const SuperAdminLogin = () => {
                   strokeLinecap="round" strokeLinejoin="round" />
               </svg>
               <span style={{ fontSize: 13, color: '#15803d', fontWeight: 500 }}>
-                Secured admin access — credentials only
+                Secured admin access, credentials only
               </span>
             </div>
 
             <form onSubmit={handleSubmit(onSubmit)} noValidate>
+              {/* College Code */}
+              <div style={{ marginBottom: 16 }}>
+                <label style={{
+                  display: 'block', fontSize: 11, fontWeight: 600,
+                  color: '#374151', textTransform: 'uppercase',
+                  letterSpacing: '0.06em', marginBottom: 6,
+                }}>
+                  College Code
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <svg
+                    style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', opacity: 0.4 }}
+                    width="16" height="16" fill="none" viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" stroke="#374151"
+                      d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5" />
+                  </svg>
+                  <input
+                    id="collegeCode"
+                    type="text"
+                    placeholder="e.g. abc-college"
+                    style={{
+                      width: '100%', boxSizing: 'border-box',
+                      padding: '11px 12px 11px 38px',
+                      border: `1.5px solid ${errors.collegeCode ? '#f87171' : '#e5e7eb'}`,
+                      borderRadius: 8, fontSize: 14, color: '#111827',
+                      outline: 'none', background: '#fafafa',
+                      transition: 'border-color .15s',
+                    }}
+                    {...register('collegeCode', { required: 'College code is required' })}
+                  />
+                </div>
+                {errors.collegeCode && (
+                  <p style={{ marginTop: 4, fontSize: 12, color: '#ef4444' }}>
+                    {errors.collegeCode.message}
+                  </p>
+                )}
+                <p style={{ marginTop: 4, fontSize: 11, color: '#9ca3af' }}>
+                  The URL slug your platform admin gave you when your college was set up.
+                </p>
+              </div>
+
               {/* Email */}
               <div style={{ marginBottom: 16 }}>
                 <label style={{
@@ -306,8 +348,8 @@ const SuperAdminLogin = () => {
                 { label: 'Admin Login', href: `${import.meta.env.VITE_API_URL || '/api'}/auth/google?role=admin` },
                 { label: 'Student Login', href: `${import.meta.env.VITE_API_URL || '/api'}/auth/google?role=student` },
               ].map(({ label, href }) => (
-                <a
-                  key={label}
+                
+                <a  key={label}
                   href={href}
                   style={{
                     flex: 1, display: 'flex', alignItems: 'center',

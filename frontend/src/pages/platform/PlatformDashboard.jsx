@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  listColleges, createCollege, renewCollege,
+  listColleges, createCollege, updateCollege, regeneratePassword, renewCollege,
   suspendCollege, softDeleteCollege, reactivateCollege, purgeCollege
 } from '../../api/platform.api';
 import CreateCollegeModal from './components/CreateCollegeModal';
+import EditCollegeModal from './components/EditCollegeModal';
 import RenewModal from './components/RenewModal';
 import PurgeModal from './components/PurgeModal';
 
@@ -28,6 +29,7 @@ export default function PlatformDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showCreate, setShowCreate] = useState(false);
+  const [editTarget, setEditTarget] = useState(null);
   const [renewTarget, setRenewTarget] = useState(null);
   const [purgeTarget, setPurgeTarget] = useState(null);
   const [actionLoading, setActionLoading] = useState('');
@@ -36,7 +38,7 @@ export default function PlatformDashboard() {
     try {
       setLoading(true);
       const res = await listColleges();
-      setColleges(res.data.data);
+      setColleges(res.data ?? []);
     } catch (err) {
       if (err.response?.status === 401) {
         localStorage.removeItem('platform_token');
@@ -54,6 +56,15 @@ export default function PlatformDashboard() {
   const handleCreate = async (data) => {
     await createCollege(data);
     setShowCreate(false);
+    load();
+  };
+
+  const handleEdit = async (collegeId, data, newPassword) => {
+    await updateCollege(collegeId, data);
+    if (newPassword) {
+      await regeneratePassword(collegeId, { newPassword });
+    }
+    setEditTarget(null);
     load();
   };
 
@@ -240,6 +251,13 @@ export default function PlatformDashboard() {
                             {!isDeleted && (
                               <>
                                 <button
+                                  onClick={() => setEditTarget(college)}
+                                  disabled={isLoading}
+                                  className="text-xs text-gray-300 hover:text-white disabled:opacity-40 transition-colors"
+                                >
+                                  Edit
+                                </button>
+                                <button
                                   onClick={() => setRenewTarget(college)}
                                   disabled={isLoading}
                                   className="text-xs text-indigo-400 hover:text-indigo-300 disabled:opacity-40 transition-colors"
@@ -304,6 +322,9 @@ export default function PlatformDashboard() {
 
       {showCreate && (
         <CreateCollegeModal onClose={() => setShowCreate(false)} onSubmit={handleCreate} />
+      )}
+      {editTarget && (
+        <EditCollegeModal college={editTarget} onClose={() => setEditTarget(null)} onSubmit={handleEdit} />
       )}
       {renewTarget && (
         <RenewModal college={renewTarget} onClose={() => setRenewTarget(null)} onSubmit={handleRenew} />

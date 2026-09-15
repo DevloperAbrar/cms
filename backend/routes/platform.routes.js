@@ -9,6 +9,7 @@ router.use(platformAuth);
 
 router.get('/colleges', ctrl.listColleges);
 router.post('/colleges', ctrl.createCollege);
+router.patch('/colleges/:collegeId', ctrl.updateCollege);
 router.patch('/colleges/:collegeId/renew', ctrl.renewSubscription);
 router.patch('/colleges/:collegeId/suspend', ctrl.suspendCollege);
 router.delete('/colleges/:collegeId', ctrl.softDeleteCollege);

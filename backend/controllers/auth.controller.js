@@ -14,23 +14,41 @@ const COOKIE_OPTIONS = {
 
 /**
  * POST /api/auth/superadmin/login
- * Each college now has its own SuperAdmin row in Postgres — no longer a
+ * Each college now has its own SuperAdmin row in Postgres, no longer a
  * single global env-based account.
  */
 const superAdminLogin = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, collegeCode } = req.body;
 
-    if (!email || !password) {
-      return sendBadRequest(res, 'Email and password are required.');
+    if (!email || !password || !collegeCode) {
+      return sendBadRequest(res, 'College code, email and password are required.');
     }
 
-    const user = await prisma.user.findFirst({
-      where: { email: email.toLowerCase(), role: ROLES.SUPERADMIN },
+    const college = await prisma.college.findUnique({
+      where: { code: collegeCode.toLowerCase().trim() },
+    });
+
+    // Same generic message as a bad email/password, don't leak whether the
+    // code exists.
+    if (!college) {
+      return sendUnauthorized(res, 'Invalid credentials.');
+    }
+
+    // email is unique PER COLLEGE (@@unique([collegeId, email])), not
+    // globally, so two colleges can share a superadmin email. Always scope
+    // the lookup by collegeId or you'll silently log into the wrong college.
+    const user = await prisma.user.findUnique({
+      where: {
+        collegeId_email: {
+          collegeId: college.id,
+          email: email.toLowerCase(),
+        },
+      },
       include: { college: true },
     });
 
-    if (!user || !user.passwordHash) {
+    if (!user || user.role !== ROLES.SUPERADMIN || !user.passwordHash) {
       return sendUnauthorized(res, 'Invalid credentials.');
     }
 
@@ -72,7 +90,7 @@ const superAdminLogin = async (req, res) => {
 
 /**
  * GET /api/auth/google/callback (handled by Passport)
- * Unchanged — hod/coordinator/faculty/student/parent still authenticate
+ * Unchanged, hod/coordinator/faculty/student/parent still authenticate
  * via MongoDB exactly as before.
  */
 const googleCallback = (req, res) => {
@@ -105,10 +123,40 @@ const logout = (_req, res) => {
 
 /**
  * GET /api/auth/me
+ * req.user is set by auth.middleware.js using Prisma field names
+ * (departmentId, branchId, coordinatorBranches), not the old Mongoose
+ * snake_case names. Both shapes are sent below so any frontend code
+ * still reading the old names keeps working.
  */
 const getMe = (req, res) => {
-  const { _id, name, email, role, department_id, branch_id, year, coordinator_branches, collegeId } = req.user;
-  return sendSuccess(res, { _id, name, email, role, department_id, branch_id, year, coordinator_branches, collegeId });
+  const {
+    id,
+    _id,
+    name,
+    email,
+    role,
+    departmentId,
+    branchId,
+    year,
+    coordinatorBranches,
+    collegeId,
+  } = req.user;
+
+  return sendSuccess(res, {
+    id,
+    _id,
+    name,
+    email,
+    role,
+    departmentId,
+    branchId,
+    department_id: departmentId,
+    branch_id: branchId,
+    year,
+    coordinatorBranches,
+    coordinator_branches: coordinatorBranches,
+    collegeId,
+  });
 };
 
 module.exports = { superAdminLogin, googleCallback, logout, getMe };
