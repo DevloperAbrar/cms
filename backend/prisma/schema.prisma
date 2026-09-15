@@ -91,6 +91,8 @@ model AcademicSession {
 
   createdAt  DateTime      @default(now())
 
+  studentYearHistory StudentYearHistory[]
+
   @@unique([collegeId, label])
   @@index([collegeId, isCurrent])
   @@map("academic_sessions")

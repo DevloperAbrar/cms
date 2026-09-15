@@ -29,7 +29,6 @@ async function login(req, res) {
 
 /**
  * Creates a college AND its first superadmin user in one transaction.
- * This is the "main super admin creates college" workflow from your spec.
  */
 async function createCollege(req, res) {
   const {
@@ -65,7 +64,7 @@ async function createCollege(req, res) {
         data: {
           collegeId: college.id,
           name: adminName || `${name} Admin`,
-          email: adminEmail,
+          email: adminEmail.toLowerCase(),
           passwordHash,
           role: 'superadmin',
           status: 'active',
@@ -101,7 +100,6 @@ async function renewSubscription(req, res) {
   const college = await prisma.college.findUnique({ where: { id: collegeId } });
   if (!college) return res.status(404).json({ success: false, message: 'College not found' });
 
-  // Renew from whichever is later: today, or the current end date (so early renewal stacks, doesn't waste days)
   const base = college.subscriptionEnd > new Date() ? college.subscriptionEnd : new Date();
   const newEnd = new Date(base);
   newEnd.setMonth(newEnd.getMonth() + (durationMonths || 12));
@@ -143,14 +141,6 @@ async function suspendCollege(req, res) {
   return res.json({ success: true, data: updated });
 }
 
-/**
- * Soft delete: marks the college for deletion. Data is NOT removed.
- * This is reversible by reactivateCollege(). This is what should happen
- * "automatically" is NOT automatic — expiry alone only sets subscriptionStatus
- * to 'expired' (see subscriptionGate below). Soft-delete is a deliberate
- * platform-owner action, exactly as you specified: "until main super admin
- * not delete."
- */
 async function softDeleteCollege(req, res) {
   const { collegeId } = req.params;
 
@@ -189,12 +179,6 @@ async function reactivateCollege(req, res) {
   return res.json({ success: true, data: updated });
 }
 
-/**
- * PURGE — the only truly destructive action, and it requires the platform
- * owner to type the college code back as confirmation (checked in the route/
- * frontend), on top of already being behind platformAuth. This is separate
- * from softDelete on purpose.
- */
 async function purgeCollege(req, res) {
   const { collegeId } = req.params;
   const { confirmCode } = req.body;
@@ -212,9 +196,6 @@ async function purgeCollege(req, res) {
     data: { collegeId, action: 'purged', actor: 'platform_owner' },
   });
 
-  // Deleting the College row cascades via FK — set onDelete: Cascade at the DB
-  // level once all tenant tables are migrated in Phase 2, or run explicit
-  // deleteMany() calls per table here in the interim.
   await prisma.college.update({ where: { id: collegeId }, data: { lifecycleStatus: 'purged' } });
 
   return res.json({ success: true, message: 'College purged' });
@@ -228,6 +209,71 @@ async function listColleges(req, res) {
   return res.json({ success: true, data: colleges });
 }
 
+// ---------- CREDENTIALS ----------
+
+function generateRandomPassword(length = 14) {
+  const charset = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%';
+  let pwd = '';
+  for (let i = 0; i < length; i++) {
+    pwd += charset[Math.floor(Math.random() * charset.length)];
+  }
+  return pwd;
+}
+
+/**
+ * Resets a college's SuperAdmin email/password. If newPassword isn't given,
+ * a random one is generated and returned ONCE in the response — it is never
+ * stored or logged in plaintext anywhere.
+ */
+async function regenerateSuperAdminPassword(req, res) {
+  const { collegeId } = req.params;
+  const { newPassword, newEmail } = req.body;
+
+  try {
+    const superadmin = await prisma.user.findFirst({ where: { collegeId, role: 'superadmin' } });
+    if (!superadmin) {
+      return res.status(404).json({ success: false, message: 'No SuperAdmin found for this college' });
+    }
+
+    const passwordToSet = newPassword || generateRandomPassword();
+    const passwordHash = await bcrypt.hash(passwordToSet, 12);
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const u = await tx.user.update({
+        where: { id: superadmin.id },
+        data: {
+          passwordHash,
+          ...(newEmail ? { email: newEmail.toLowerCase() } : {}),
+        },
+      });
+      await tx.subscriptionEvent.create({
+        data: {
+          collegeId,
+          action: 'credentials_regenerated',
+          actor: 'platform_owner',
+          note: newEmail ? 'Email and password reset' : 'Password reset',
+        },
+      });
+      return u;
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        email: updated.email,
+        generatedPassword: newPassword ? undefined : passwordToSet,
+      },
+      message: 'Credentials regenerated. Store this password now — it will not be shown again.',
+    });
+  } catch (err) {
+    if (err.code === 'P2002') {
+      return res.status(409).json({ success: false, message: 'That email is already in use by another college' });
+    }
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Failed to regenerate credentials' });
+  }
+}
+
 module.exports = {
   login,
   createCollege,
@@ -237,4 +283,5 @@ module.exports = {
   reactivateCollege,
   purgeCollege,
   listColleges,
+  regenerateSuperAdminPassword,
 };

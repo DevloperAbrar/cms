@@ -9,6 +9,9 @@ const passport = require('passport');
 const configurePassport = require('./config/passport');
 const logger = require('./utils/logger');
 
+const { authenticate } = require('./middleware/auth.middleware');
+const subscriptionGate = require('./middleware/subscriptionGate.middleware');
+
 // Route modules
 const authRoutes = require('./routes/auth.routes');
 const superadminRoutes = require('./routes/superadmin.routes');
@@ -18,6 +21,7 @@ const facultyRoutes = require('./routes/faculty.routes');
 const examcontrollerRoutes = require('./routes/examcontroller.routes');
 const studentRoutes = require('./routes/student.routes');
 const parentRoutes = require('./routes/parent.routes');
+const platformRoutes = require('./routes/platform.routes');
 
 const app = express();
 
@@ -66,18 +70,22 @@ app.use(
   })
 );
 
-app.use('/api/platform', require('./routes/platform.routes'));
+// ─── PLATFORM OWNER ROUTES (no college context, own auth track) ──────────────
+app.use('/api/platform', platformRoutes);
 
 // ─── ROUTES ──────────────────────────────────────────────────────────────────
+// NOTE: /api/auth has NO subscriptionGate — a user must be able to log in
+// even if we still need to tell them their college's subscription is dead.
 app.use('/api/auth', authRoutes);
-app.use('/api/superadmin', superadminRoutes);
-app.use('/api/hod', hodRoutes);
-app.use('/api/coordinator', coordinatorRoutes);
-app.use('/api/faculty', facultyRoutes);
-app.use('/api/examcontroller', examcontrollerRoutes);
-app.use('/api/student', studentRoutes);
-app.use('/api/parent', parentRoutes);
-app.use('/api/hod', authMiddleware, subscriptionGate, require('./routes/hod.routes'));
+
+app.use('/api/superadmin', authenticate, subscriptionGate, superadminRoutes);
+app.use('/api/hod', authenticate, subscriptionGate, hodRoutes);
+app.use('/api/coordinator', authenticate, subscriptionGate, coordinatorRoutes);
+app.use('/api/faculty', authenticate, subscriptionGate, facultyRoutes);
+app.use('/api/examcontroller', authenticate, subscriptionGate, examcontrollerRoutes);
+app.use('/api/student', authenticate, subscriptionGate, studentRoutes);
+app.use('/api/parent', authenticate, subscriptionGate, parentRoutes);
+
 // ─── HEALTH CHECK ────────────────────────────────────────────────────────────
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
