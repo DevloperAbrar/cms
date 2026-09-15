@@ -1,0 +1,701 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// PLATFORM LEVEL
+// ============================================================
+
+enum SubscriptionStatus {
+  trial
+  active
+  grace
+  expired
+  suspended
+}
+
+enum CollegeLifecycle {
+  active
+  soft_deleted // subscription expired long past grace, or platform owner marked for deletion
+  purged       // hard-deleted, kept only for audit reference (rows physically removed elsewhere)
+}
+
+model College {
+  id                  String             @id @default(uuid())
+  name                String
+  code                String             @unique // slug used in login URL, e.g. "abc-college"
+  contactEmail        String
+  contactPhone        String?
+
+  subscriptionPlan    String             @default("standard") // "standard" | "pro" | "enterprise" - free-form, keyed against Plan table below if you want billing later
+  subscriptionStatus  SubscriptionStatus @default(trial)
+  subscriptionStart   DateTime           @default(now())
+  subscriptionEnd     DateTime
+  lastRenewedAt       DateTime?
+  graceDays           Int                @default(7) // days after expiry before hard lock kicks in
+
+  lifecycleStatus     CollegeLifecycle   @default(active)
+  deletedAt           DateTime?          // soft-delete marker, set by platform owner only
+  deleteRequestedBy   String?            // platform owner identifier, audit trail
+
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  users               User[]
+  academicSessions    AcademicSession[]
+  subscriptionEvents  SubscriptionEvent[]
+
+  @@index([subscriptionStatus])
+  @@index([lifecycleStatus])
+  @@map("colleges")
+}
+
+// Audit trail of every renewal/suspend/expire/purge action — you'll want this for support disputes.
+model SubscriptionEvent {
+  id         String   @id @default(uuid())
+  collegeId  String
+  college    College  @relation(fields: [collegeId], references: [id])
+  action     String   // "created" | "renewed" | "suspended" | "expired" | "soft_deleted" | "purged" | "reactivated"
+  actor      String   // "platform_owner" (env-based, no id) or a user id
+  note       String?
+  createdAt  DateTime @default(now())
+
+  @@index([collegeId, createdAt])
+  @@map("subscription_events")
+}
+
+// ============================================================
+// ACADEMIC SESSION (the piece that was missing — fixes #2)
+// ============================================================
+
+enum SessionStatus {
+  upcoming
+  active
+  closed
+}
+
+model AcademicSession {
+  id         String        @id @default(uuid())
+  collegeId  String
+  college    College       @relation(fields: [collegeId], references: [id])
+  label      String        // e.g. "2025-2026"
+  startDate  DateTime
+  endDate    DateTime
+  status     SessionStatus @default(upcoming)
+  isCurrent  Boolean       @default(false)
+
+  createdAt  DateTime      @default(now())
+
+  @@unique([collegeId, label])
+  @@index([collegeId, isCurrent])
+  @@map("academic_sessions")
+}
+
+// ============================================================
+// CORE — USERS (multi-tenant version of your existing User.js)
+// ============================================================
+
+enum Role {
+  superadmin
+  examcontroller
+  hod
+  coordinator
+  faculty
+  student
+  parent
+}
+
+enum UserStatus {
+  active
+  inactive
+  deleted
+}
+
+model User {
+  id              String     @id @default(uuid())
+  collegeId       String
+  college         College    @relation(fields: [collegeId], references: [id])
+
+  name            String
+  email           String
+  passwordHash    String?
+  role            Role
+  status          UserStatus @default(active)
+
+  departmentId    String?
+  branchId        String?
+
+  year            Int?
+  enrollmentNumber String?
+  section         String?
+
+  googleId        String?
+  phone           String?
+  semester        Int?
+
+  lastLogin       DateTime?
+  lastLoginIp     String?
+
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  // A student's per-year record lives here, not on User directly (this is what makes promotion safe)
+  yearHistory     StudentYearHistory[]
+
+  @@unique([collegeId, email]) // email unique PER COLLEGE, not globally — important for multi-tenant
+  @@unique([collegeId, enrollmentNumber])
+  @@index([collegeId, role, status])
+  @@index([collegeId, departmentId, role])
+  @@index([collegeId, branchId, year, role])
+  @@map("users")
+}
+
+// Tracks a student's placement in each academic session — this is the actual fix for "how do
+// 2nd years become 3rd years next session" without touching last year's marks/attendance.
+enum PromotionStatus {
+  active
+  promoted
+  repeated
+  graduated
+  dropped
+}
+
+model StudentYearHistory {
+  id                String          @id @default(uuid())
+  collegeId         String
+  studentId         String
+  student           User            @relation(fields: [studentId], references: [id])
+  academicSessionId String
+  academicSession   AcademicSession @relation(fields: [academicSessionId], references: [id])
+
+  branchId          String
+  year              Int
+  semester          Int?
+  section           String?
+  status            PromotionStatus @default(active)
+
+  promotedFromId    String?         // self-reference to previous year's history row, for audit trail
+
+  createdAt         DateTime        @default(now())
+
+  @@unique([studentId, academicSessionId])
+  @@index([collegeId, academicSessionId, branchId, year])
+  @@map("student_year_history")
+}
+
+// ============================================================
+// ACADEMIC STRUCTURE
+// ============================================================
+
+model Stream {
+  id         String       @id @default(uuid())
+  collegeId  String
+  name       String
+  code       String
+  status     String       @default("active")
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  departments Department[]
+  examPatterns ExamPattern[]
+
+  @@unique([collegeId, code])
+  @@index([collegeId, status])
+  @@map("streams")
+}
+
+model Department {
+  id         String   @id @default(uuid())
+  collegeId  String
+  streamId   String
+  stream     Stream   @relation(fields: [streamId], references: [id])
+  name       String
+  code       String
+  status     String   @default("active")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  branches   Branch[]
+
+  @@unique([collegeId, code])
+  @@index([collegeId, streamId])
+  @@map("departments")
+}
+
+model Branch {
+  id           String     @id @default(uuid())
+  collegeId    String
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+  name         String
+  code         String
+  status       String     @default("active")
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  subjects     Subject[]
+
+  @@unique([collegeId, code])
+  @@index([collegeId, departmentId])
+  @@map("branches")
+}
+
+model Subject {
+  id               String   @id @default(uuid())
+  collegeId        String
+  branchId         String
+  branch           Branch   @relation(fields: [branchId], references: [id])
+  name             String
+  code             String
+  year             Int
+  semester         Int
+  type             String   @default("theory") // theory | practical
+  credits          Int      @default(0)
+  status           String   @default("active")
+  assignedFacultyId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([collegeId, code])
+  @@index([collegeId, branchId, year, semester])
+  @@map("subjects")
+}
+
+// Structural exam-pattern template (kept session-agnostic on purpose — a
+// stream's grading structure rarely changes year to year; if a college
+// changes it mid-year, create a new pattern row rather than mutate history).
+model ExamPattern {
+  id            String   @id @default(uuid())
+  collegeId     String
+  streamId      String
+  stream        Stream   @relation(fields: [streamId], references: [id])
+  year          Int
+  semester      Int
+  locked        Boolean  @default(false)
+  forceUnlockBy String?
+  sgpaFormula   String   @default("weighted_average")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  components    ExamPatternComponent[]
+
+  @@unique([collegeId, streamId, year, semester])
+  @@map("exam_patterns")
+}
+
+model ExamPatternComponent {
+  id                String      @id @default(uuid())
+  examPatternId     String
+  examPattern       ExamPattern @relation(fields: [examPatternId], references: [id], onDelete: Cascade)
+  name              String
+  maxMarks          Float
+  weightagePercent  Float
+  enteredBy         String      // faculty | coordinator | examcontroller
+  includeInSgpa     Boolean     @default(true)
+  passMarks         Float       @default(0)
+
+  @@index([examPatternId])
+  @@map("exam_pattern_components")
+}
+
+// ============================================================
+// MARKS
+// ============================================================
+
+model MarksComponent {
+  id                String   @id @default(uuid())
+  collegeId         String
+  facultyId         String
+  subjectId         String
+  branchId          String
+  academicSessionId String
+  year              Int
+  examComponentId   String   // references ExamPatternComponent.id
+  structureLocked   Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  subFields         MarksSubField[]
+
+  @@unique([facultyId, subjectId, branchId, academicSessionId, examComponentId])
+  @@index([collegeId, academicSessionId, branchId])
+  @@map("marks_components")
+}
+
+model MarksSubField {
+  id               String         @id @default(uuid())
+  marksComponentId String
+  marksComponent   MarksComponent @relation(fields: [marksComponentId], references: [id], onDelete: Cascade)
+  name             String
+  maxMarks         Float
+  displayOrder     Int            @default(0)
+
+  @@index([marksComponentId])
+  @@map("marks_subfields")
+}
+
+model Marks {
+  id                String   @id @default(uuid())
+  collegeId         String
+  studentId         String
+  subjectId         String
+  branchId          String
+  academicSessionId String
+  year              Int
+  semester          Int
+  examComponentId   String
+  totalMarks        Float
+  maxMarks          Float
+  submittedById     String
+  locked            Boolean  @default(false)
+  submittedAt       DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  subFieldEntries   MarksSubFieldEntry[]
+  history           MarksHistory[]
+
+  @@unique([studentId, subjectId, examComponentId, academicSessionId])
+  @@index([collegeId, branchId, academicSessionId, year, semester])
+  @@map("marks")
+}
+
+model MarksSubFieldEntry {
+  id             String @id @default(uuid())
+  marksId        String
+  marks          Marks  @relation(fields: [marksId], references: [id], onDelete: Cascade)
+  subFieldId     String
+  marksObtained  Float
+
+  @@index([marksId])
+  @@map("marks_subfield_entries")
+}
+
+model MarksHistory {
+  id              String   @id @default(uuid())
+  collegeId       String
+  marksId         String
+  marks           Marks    @relation(fields: [marksId], references: [id])
+  changedById     String
+  previousValues  Json
+  newValues       Json
+  changedAt       DateTime @default(now())
+
+  @@index([marksId, changedAt])
+  @@map("marks_history")
+}
+
+// ============================================================
+// ATTENDANCE
+// ============================================================
+
+model Attendance {
+  id                String   @id @default(uuid())
+  collegeId         String
+  studentId         String
+  subjectId         String
+  branchId          String
+  academicSessionId String
+  year              Int
+  date              DateTime
+  slot              String?
+  status            String   // present | absent | late
+  markedById        String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([studentId, subjectId, date])
+  @@index([collegeId, branchId, subjectId, date])
+  @@index([collegeId, academicSessionId, branchId, year])
+  @@map("attendance")
+}
+
+model FacultyAttendance {
+  id           String   @id @default(uuid())
+  collegeId    String
+  facultyId    String
+  departmentId String
+  date         DateTime
+  status       String
+  note         String?
+  markedById   String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([facultyId, date])
+  @@index([collegeId, departmentId, date])
+  @@map("faculty_attendance")
+}
+
+// ============================================================
+// TIMETABLE
+// ============================================================
+
+model Timetable {
+  id                String   @id @default(uuid())
+  collegeId         String
+  branchId          String
+  academicSessionId String
+  year              Int
+  section           String?
+  semester          Int
+  status            String   @default("draft") // draft | published
+  createdById       String
+  publishedAt       DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  slots             TimetableSlot[]
+
+  @@index([collegeId, branchId, academicSessionId, year, semester])
+  @@map("timetables")
+}
+
+model TimetableSlot {
+  id           String    @id @default(uuid())
+  timetableId  String
+  timetable    Timetable @relation(fields: [timetableId], references: [id], onDelete: Cascade)
+  day          String
+  timeSlot     String
+  subjectId    String
+  facultyId    String
+  room         String?
+  isLab        Boolean   @default(false)
+
+  @@index([timetableId])
+  @@map("timetable_slots")
+}
+
+// ============================================================
+// QUIZ
+// ============================================================
+
+model Quiz {
+  id                 String   @id @default(uuid())
+  collegeId          String
+  title              String
+  subjectId          String
+  branchId           String
+  academicSessionId  String
+  year               Int
+  createdById        String
+  startTime          DateTime
+  endTime            DateTime
+  durationMinutes    Int
+  totalMarks         Float
+  negativeMarking    Boolean  @default(false)
+  negativeValue      Float    @default(0)
+  shuffleQuestions   Boolean  @default(false)
+  shuffleOptions     Boolean  @default(false)
+  attemptsAllowed    Int      @default(1)
+  resultVisibility   String   @default("immediate")
+  resultPublishMode  String   @default("none")
+  status             String   @default("draft")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  questions          QuizQuestion[]
+  attempts           QuizAttempt[]
+
+  @@index([collegeId, branchId, academicSessionId, year, startTime, endTime])
+  @@index([collegeId, createdById, status])
+  @@map("quizzes")
+}
+
+model QuizQuestion {
+  id             String       @id @default(uuid())
+  quizId         String
+  quiz           Quiz         @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  text           String
+  imagePath      String?
+  type           String       @default("single") // single | multiple
+  marks          Float
+  negativeMarks  Float        @default(0)
+
+  options        QuizOption[]
+  answers        QuizAnswer[]
+
+  @@index([quizId])
+  @@map("quiz_questions")
+}
+
+model QuizOption {
+  id          String        @id @default(uuid())
+  questionId  String
+  question    QuizQuestion  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  text        String?
+  imagePath   String?
+  isCorrect   Boolean       @default(false)
+
+  @@index([questionId])
+  @@map("quiz_options")
+}
+
+model QuizAttempt {
+  id                String   @id @default(uuid())
+  collegeId         String
+  quizId            String
+  quiz              Quiz     @relation(fields: [quizId], references: [id])
+  studentId         String
+  startedAt         DateTime @default(now())
+  submittedAt       DateTime?
+  score             Float?
+  isAutoSubmitted   Boolean  @default(false)
+  attemptNumber     Int      @default(1)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  answers           QuizAnswer[]
+
+  @@index([quizId, studentId])
+  @@map("quiz_attempts")
+}
+
+model QuizAnswer {
+  id                String       @id @default(uuid())
+  attemptId         String
+  attempt           QuizAttempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  questionId        String
+  question          QuizQuestion @relation(fields: [questionId], references: [id])
+  selectedOptionIds String[]     // Postgres native array — clean replacement for the ObjectId array
+
+  @@index([attemptId])
+  @@map("quiz_answers")
+}
+
+// ============================================================
+// NOTICES & MESSAGES
+// ============================================================
+
+model Notice {
+  id          String    @id @default(uuid())
+  collegeId   String
+  title       String
+  body        String
+  priority    String    @default("normal")
+  postedById  String?
+  targetType  String    // all | stream | department | branch | year | individual
+  targetIds   String[]  // Postgres array
+  scheduleAt  DateTime?
+  expiresAt   DateTime?
+  readBy      String[]  @default([])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([collegeId, expiresAt])
+  @@index([collegeId, postedById, createdAt])
+  @@map("notices")
+}
+
+model Message {
+  id           String    @id @default(uuid())
+  collegeId    String
+  senderId     String
+  recipientId  String
+  body         String
+  readAt       DateTime?
+  deliveredAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([collegeId, senderId, recipientId, createdAt])
+  @@index([collegeId, recipientId, readAt])
+  @@map("messages")
+}
+
+// ============================================================
+// PARENT ACCESS
+// ============================================================
+
+model ParentToken {
+  id          String    @id @default(uuid())
+  collegeId   String
+  studentId   String
+  token       String    @unique
+  expiresAt   DateTime?
+  revoked     Boolean   @default(false)
+  createdById String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([collegeId, studentId])
+  @@map("parent_tokens")
+}
+
+// ============================================================
+// FINAL RESULTS
+// ============================================================
+
+model FinalResultConfig {
+  id                String   @id @default(uuid())
+  collegeId         String
+  academicSessionId String
+  label             String
+  metricType        String   // cgpa | sgpa | percentage | grade | custom
+  year              Int
+  semester          Int
+  maxValue          Float
+  passingValue      Float
+  decimalPlaces     Int      @default(2)
+  isActive          Boolean  @default(true)
+  createdById       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  results           FinalResult[]
+
+  @@index([collegeId, academicSessionId, year, semester, metricType])
+  @@map("final_result_configs")
+}
+
+model FinalResult {
+  id            String            @id @default(uuid())
+  collegeId     String
+  configId      String
+  config        FinalResultConfig @relation(fields: [configId], references: [id])
+  studentId     String
+  branchId      String
+  departmentId  String
+  year          Int
+  semester      Int
+  value         Float
+  isPublished   Boolean           @default(false)
+  publishedAt   DateTime?
+  submittedById String
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@unique([configId, studentId])
+  @@index([collegeId, branchId, year, semester])
+  @@index([collegeId, departmentId, year, semester])
+  @@index([configId, isPublished])
+  @@map("final_results")
+}
+
+// ============================================================
+// AUDIT LOG
+// ============================================================
+
+model AuditLog {
+  id           String   @id @default(uuid())
+  collegeId    String?  // nullable — platform-owner actions have no college
+  actorId      String?
+  actorRole    String
+  actorName    String
+  action       String
+  resourceType String
+  resourceId   String?
+  ipAddress    String?
+  metadata     Json?
+  createdAt    DateTime @default(now())
+
+  @@index([collegeId, actorId, createdAt])
+  @@index([collegeId, resourceType, createdAt])
+  @@index([collegeId, action, createdAt])
+  @@map("audit_logs")
+}

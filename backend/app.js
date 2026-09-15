@@ -66,6 +66,8 @@ app.use(
   })
 );
 
+app.use('/api/platform', require('./routes/platform.routes'));
+
 // ─── ROUTES ──────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
 app.use('/api/superadmin', superadminRoutes);
@@ -75,7 +77,7 @@ app.use('/api/faculty', facultyRoutes);
 app.use('/api/examcontroller', examcontrollerRoutes);
 app.use('/api/student', studentRoutes);
 app.use('/api/parent', parentRoutes);
-
+app.use('/api/hod', authMiddleware, subscriptionGate, require('./routes/hod.routes'));
 // ─── HEALTH CHECK ────────────────────────────────────────────────────────────
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
