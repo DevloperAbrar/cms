@@ -1,4 +1,4 @@
-const AuditLog = require('../models/AuditLog');
+const prisma = require('../config/prismaClient');
 const logger = require('../utils/logger');
 
 /**
@@ -17,18 +17,21 @@ const auditLog = (action, resourceType) => {
       // Only log successful mutations (2xx)
       if (res.statusCode >= 200 && res.statusCode < 300 && req.user) {
         try {
-          await AuditLog.create({
-            actor_id: req.user._id === 'superadmin' ? null : req.user._id,
-            actor_role: req.user.role,
-            actor_name: req.user.name,
-            action,
-            resource_type: resourceType,
-            resource_id: body?.data?._id || req.params?.id || null,
-            ip_address: req.ip || req.connection?.remoteAddress,
-            metadata: {
-              method: req.method,
-              path: req.path,
-              body_keys: req.body ? Object.keys(req.body) : [],
+          await prisma.auditLog.create({
+            data: {
+              collegeId: req.user.collegeId || null,
+              actorId: req.user.id || null,
+              actorRole: req.user.role,
+              actorName: req.user.name,
+              action,
+              resourceType,
+              resourceId: body?.data?._id || body?.data?.id || req.params?.id || null,
+              ipAddress: req.ip || req.connection?.remoteAddress,
+              metadata: {
+                method: req.method,
+                path: req.path,
+                body_keys: req.body ? Object.keys(req.body) : [],
+              },
             },
           });
         } catch (err) {

@@ -1,9 +1,6 @@
 const csvParser = require('csv-parser');
 const { Readable } = require('stream');
-const User = require('../models/User');
-const Branch = require('../models/Branch');
-const Department = require('../models/Department');
-const Stream = require('../models/Stream');
+const prisma = require('../config/prismaClient');
 const { ROLES, USER_STATUS } = require('../config/constants');
 
 const parseCSVBuffer = (buffer) => {
@@ -17,7 +14,7 @@ const parseCSVBuffer = (buffer) => {
   });
 };
 
-const processStudentCSV = async (buffer) => {
+const processStudentCSV = async (buffer, collegeId) => {
   const rows = await parseCSVBuffer(buffer);
 
   console.log('Total rows parsed:', rows.length);
@@ -26,20 +23,22 @@ const processStudentCSV = async (buffer) => {
     console.log('Headers found:', Object.keys(rows[0]));
   }
 
-  const streams = await Stream.find().lean();
-  const departments = await Department.find().lean();
-  const branches = await Branch.find().lean();
+  const [streams, departments, branches, existingUsers] = await Promise.all([
+    prisma.stream.findMany({ where: { collegeId } }),
+    prisma.department.findMany({ where: { collegeId } }),
+    prisma.branch.findMany({ where: { collegeId } }),
+    prisma.user.findMany({
+      where: { collegeId, role: ROLES.STUDENT },
+      select: { email: true, enrollmentNumber: true },
+    }),
+  ]);
 
   console.log('Streams in DB:', streams.map(s => s.code));
   console.log('Departments in DB:', departments.map(d => d.code));
   console.log('Branches in DB:', branches.map(b => b.code));
 
-  const existingUsers = await User.find({ role: ROLES.STUDENT })
-    .select('email enrollment_number')
-    .lean();
-
   const existingEmails = new Set(existingUsers.map(u => u.email));
-  const existingEnrollments = new Set(existingUsers.map(u => u.enrollment_number).filter(Boolean));
+  const existingEnrollments = new Set(existingUsers.map(u => u.enrollmentNumber).filter(Boolean));
 
   const toInsert = [];
   const errors = [];
@@ -87,14 +86,15 @@ const processStudentCSV = async (buffer) => {
     existingEnrollments.add(enrollmentNo);
 
     toInsert.push({
+      collegeId,
       name,
       email,
-      enrollment_number: enrollmentNo,
+      enrollmentNumber: enrollmentNo,
       phone: phone || null,
       role: ROLES.STUDENT,
       status: USER_STATUS.ACTIVE,
-      department_id: dept._id,
-      branch_id: branch._id,
+      departmentId: dept.id,
+      branchId: branch.id,
       year,
       section,
       semester,
@@ -107,7 +107,9 @@ const processStudentCSV = async (buffer) => {
   }
 
   if (toInsert.length > 0) {
-    await User.insertMany(toInsert, { ordered: false });
+    // createMany doesn't run per-row validation the way insertMany did, but rows were
+    // already de-duplicated against existingEmails/existingEnrollments above.
+    await prisma.user.createMany({ data: toInsert, skipDuplicates: true });
   }
 
   return { imported: toInsert.length, skipped: errors.length, errors };

@@ -90,15 +90,14 @@ const superAdminLogin = async (req, res) => {
 
 /**
  * GET /api/auth/google/callback (handled by Passport)
- * Unchanged, hod/coordinator/faculty/student/parent still authenticate
- * via MongoDB exactly as before.
+ * req.user here is the Prisma user object set by config/passport.js.
  */
 const googleCallback = (req, res) => {
   try {
     const user = req.user;
 
     const token = jwt.sign(
-      { id: user._id, role: user.role },
+      { id: user.id, role: user.role, collegeId: user.collegeId },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRY || '7d' }
     );
