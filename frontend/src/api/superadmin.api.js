@@ -4,6 +4,10 @@ const base = '/superadmin';
 
 const d = (res) => res?.data ?? res;
 
+// Unified login — replaces the old /superadmin/login call
+export const loginUser = (email, password) =>
+  api.post('/auth/login', { email, password }).then(d);
+
 export const superadminApi = {
   // Streams
   getStreams: () => api.get(`${base}/streams`).then(d),
@@ -70,9 +74,14 @@ export const superadminApi = {
   deleteNotice: (id) => api.delete(`${base}/notices/${id}`).then(d),
 
   // Final Results
-  getFinalResultConfigs: (params) => api.get(`${base}/final-results/configs`, { params }).then(d),
-  createFinalResultConfig: (data) => api.post(`${base}/final-results/configs`, data).then(d),
-  updateFinalResultConfig: (id, data) => api.put(`${base}/final-results/configs/${id}`, data).then(d),
-  deleteFinalResultConfig: (id) => api.delete(`${base}/final-results/configs/${id}`).then(d),
-  getFinalResultsAdmin: (params) => api.get(`${base}/final-results`, { params }).then(d),
+  getFinalResultConfigs: (params) =>
+    api.get(`${base}/final-results/configs`, { params }).then(d),
+  createFinalResultConfig: (data) =>
+    api.post(`${base}/final-results/configs`, data).then(d),
+  updateFinalResultConfig: (id, data) =>
+    api.put(`${base}/final-results/configs/${id}`, data).then(d),
+  deleteFinalResultConfig: (id) =>
+    api.delete(`${base}/final-results/configs/${id}`).then(d),
+  getFinalResultsAdmin: (params) =>
+    api.get(`${base}/final-results`, { params }).then(d),
 };

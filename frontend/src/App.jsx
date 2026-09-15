@@ -4,7 +4,6 @@ import { useAuth } from './hooks/useAuth';
 import { RoleGuard, getRoleHome } from './utils/roleGuard';
 import useAuthStore from './store/authStore';
 
-
 import SuperAdminFinalResults from './pages/superadmin/FinalResults';
 import CoordinatorFinalResults from './pages/coordinator/FinalResults';
 import HODFinalResults from './pages/hod/FinalResults';
@@ -93,6 +92,12 @@ import StudentQuizResult from './pages/student/StudentQuizResult';
 // Parent
 import ParentView from './pages/parent/ParentView';
 
+// ── Platform Owner (Main Super Admin) ────────────────────────────────────────
+import PlatformLogin from './pages/platform/PlatformLogin';
+import PlatformDashboard from './pages/platform/PlatformDashboard';
+import PlatformGuard from './guards/PlatformGuard';
+// ─────────────────────────────────────────────────────────────────────────────
+
 const HomeRedirect = () => {
   const { user, isAuthenticated } = useAuthStore();
   if (isAuthenticated && user) return <Navigate to={getRoleHome(user.role)} replace />;
@@ -104,7 +109,6 @@ const App = () => {
   const { isAuthenticated } = useAuthStore();
 
   useEffect(() => {
-    // Only fetch if not already authenticated
     if (!isAuthenticated) {
       fetchMe();
     }
@@ -114,7 +118,7 @@ const App = () => {
     };
     window.addEventListener('auth:logout', handler);
     return () => window.removeEventListener('auth:logout', handler);
-  }, []); // ← MUST be empty array
+  }, []);
 
   return (
     <Routes>
@@ -123,6 +127,16 @@ const App = () => {
       <Route path="/auth/callback" element={<GoogleCallback />} />
       <Route path="/auth/error" element={<div className="min-h-screen flex items-center justify-center"><p className="text-red-600">Authentication failed. Please try again.</p></div>} />
       <Route path="/parent/:token" element={<ParentView />} />
+
+      {/* ── Platform Owner — completely separate auth track ── */}
+      <Route path="/platform/login" element={<PlatformLogin />} />
+      <Route path="/platform/dashboard" element={
+        <PlatformGuard>
+          <PlatformDashboard />
+        </PlatformGuard>
+      } />
+      {/* Redirect /platform → /platform/login for convenience */}
+      <Route path="/platform" element={<Navigate to="/platform/login" replace />} />
 
       {/* Super Admin */}
       <Route path="/superadmin" element={<RoleGuard allowedRoles={['superadmin']}><SuperAdminLayout /></RoleGuard>}>
@@ -207,10 +221,9 @@ const App = () => {
         <Route path="timetable" element={<StudentTimetable />} />
         <Route path="quiz" element={<StudentQuiz />} />
         <Route path="quiz/:quiz_id/attempt" element={<StudentQuizAttempt />} />
+        <Route path="quiz/:quiz_id/result" element={<StudentQuizResult />} />
         <Route path="notices" element={<StudentNotices />} />
         <Route path="final-results" element={<StudentFinalResults />} />
-        <Route path="quiz/:quiz_id/attempt" element={<StudentQuizAttempt />} />
-        <Route path="quiz/:quiz_id/result" element={<StudentQuizResult />} />  {/* ADD THIS */}
       </Route>
 
       {/* Catch-all */}
