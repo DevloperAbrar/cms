@@ -201,10 +201,13 @@ exports.assignCoordinator = async (req, res) => {
       return sendBadRequest(res, 'faculty_id and coordinator_branches are required.');
     }
 
-    // Keep role as 'faculty' — coordinator status is tracked via CoordinatorBranch table
-    // Only update role to coordinator if they are currently faculty
     const user = await prisma.user.findFirst({ where: { id: faculty_id } });
     if (!user) return sendNotFound(res, 'Faculty not found.');
+
+    await prisma.user.update({
+      where: { id: faculty_id },
+      data: { role: 'coordinator' },
+    });
 
     await prisma.coordinatorBranch.deleteMany({ where: { userId: faculty_id } });
     await prisma.coordinatorBranch.createMany({
