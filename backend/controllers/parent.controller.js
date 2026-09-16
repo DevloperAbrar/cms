@@ -29,11 +29,16 @@ exports.getParentView = async (req, res) => {
       getStudentMonthlyAttendance(studentId, 6),
       getStudentWeeklyAttendance(studentId, 8),
     ]);
-
     const marksList = await prisma.marks.findMany({
       where: { studentId },
-      include: { subject: { select: { id: true, name: true, code: true } } },
     });
+
+    // Manual subject join — Marks has no @relation to Subject
+    const subjectIds = [...new Set(marksList.map((m) => m.subjectId).filter(Boolean))];
+    const subjectList = subjectIds.length
+      ? await prisma.subject.findMany({ where: { id: { in: subjectIds } }, select: { id: true, name: true, code: true } })
+      : [];
+    const subjectMap = Object.fromEntries(subjectList.map((s) => [s.id, s]));
 
     const streamId = branch?.department?.streamId;
     let componentNameMap = {};
@@ -54,8 +59,9 @@ exports.getParentView = async (req, res) => {
     for (const m of marksList) {
       const key = m.subjectId;
       if (!key) continue;
+      const subj = subjectMap[key];
       if (!marksBySubject[key]) {
-        marksBySubject[key] = { subject_name: m.subject?.name, subject_code: m.subject?.code, components: [] };
+        marksBySubject[key] = { subject_name: subj?.name, subject_code: subj?.code, components: [] };
       }
       const compMeta = componentNameMap[m.examComponentId];
       marksBySubject[key].components.push({
