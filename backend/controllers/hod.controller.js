@@ -359,16 +359,19 @@ exports.getMessages = async (req, res) => {
   try {
     const messages = await prisma.message.findMany({
       where: { OR: [{ senderId: req.user.id }, { recipientId: req.user.id }] },
-      include: {
-        sender: { select: { name: true, role: true } },
-        recipient: { select: { name: true, role: true } },
-      },
       orderBy: { createdAt: 'desc' },
     });
+
+    const userIds = [...new Set([...messages.map((m) => m.senderId), ...messages.map((m) => m.recipientId)].filter(Boolean))];
+    const users = userIds.length
+      ? await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true, role: true } })
+      : [];
+    const userMap = Object.fromEntries(users.map((u) => [u.id, u]));
+
     return sendSuccess(res, messages.map((m) => ({
       ...m, _id: m.id,
-      sender_id: { _id: m.senderId, name: m.sender?.name, role: m.sender?.role },
-      recipient_id: { _id: m.recipientId, name: m.recipient?.name, role: m.recipient?.role },
+      sender_id: { _id: m.senderId, name: userMap[m.senderId]?.name, role: userMap[m.senderId]?.role },
+      recipient_id: { _id: m.recipientId, name: userMap[m.recipientId]?.name, role: userMap[m.recipientId]?.role },
     })));
   } catch (err) { return sendError(res, err.message); }
 };
@@ -405,18 +408,24 @@ exports.getDeptSubjectsWithFaculty = async (req, res) => {
 
     const subjects = await prisma.subject.findMany({
       where,
-      include: {
-        branch: { select: { id: true, name: true, code: true } },
-        assignedFaculty: { select: { id: true, name: true, email: true } },
-      },
+      include: { branch: { select: { id: true, name: true, code: true } } },
       orderBy: { name: 'asc' },
     });
 
-    return sendSuccess(res, subjects.map((s) => ({
-      _id: s.id, id: s.id, name: s.name, code: s.code, year: s.year, semester: s.semester, type: s.type, credits: s.credits,
-      branch_id: s.branch ? { _id: s.branchId, name: s.branch.name, code: s.branch.code } : s.branchId,
-      assigned_faculty: s.assignedFaculty ? { _id: s.assignedFacultyId, name: s.assignedFaculty.name, email: s.assignedFaculty.email } : null,
-    })));
+    const facultyIds = [...new Set(subjects.map((s) => s.assignedFacultyId).filter(Boolean))];
+    const facultyList = facultyIds.length
+      ? await prisma.user.findMany({ where: { id: { in: facultyIds } }, select: { id: true, name: true, email: true } })
+      : [];
+    const facultyMap = Object.fromEntries(facultyList.map((f) => [f.id, f]));
+
+    return sendSuccess(res, subjects.map((s) => {
+      const f = s.assignedFacultyId ? facultyMap[s.assignedFacultyId] : null;
+      return {
+        _id: s.id, id: s.id, name: s.name, code: s.code, year: s.year, semester: s.semester, type: s.type, credits: s.credits,
+        branch_id: s.branch ? { _id: s.branchId, name: s.branch.name, code: s.branch.code } : s.branchId,
+        assigned_faculty: f ? { _id: s.assignedFacultyId, name: f.name, email: f.email } : null,
+      };
+    }));
   } catch (err) { return sendError(res, err.message); }
 };
 
@@ -432,7 +441,7 @@ exports.createSubject = async (req, res) => {
     if (exists) return sendBadRequest(res, 'Subject code already exists.');
 
     const subject = await prisma.subject.create({
-      data: { collegeId: req.user.collegeId, branchId: branch_id, name, code: code.toUpperCase(), year: Number(year), semester: Number(semester), type: type || 'theory', credits: credits || 0 },
+      data: { collegeId: req.user.collegeId, branchId: branch_id, name, code: code.toUpperCase(), year: Number(year), semester: Number(semester), type: type || 'theory', credits: credits !== undefined && credits !== '' ? Number(credits) : 0 },
     });
     return sendCreated(res, { ...subject, _id: subject.id }, 'Subject created.');
   } catch (err) { return sendError(res, err.message); }
@@ -452,7 +461,7 @@ exports.updateSubject = async (req, res) => {
         name: req.body.name, code: req.body.code,
         year: req.body.year ? Number(req.body.year) : undefined,
         semester: req.body.semester ? Number(req.body.semester) : undefined,
-        type: req.body.type, credits: req.body.credits,
+        type: req.body.type,         credits: req.body.credits !== undefined && req.body.credits !== '' ? Number(req.body.credits) : undefined,
       },
     });
     return sendSuccess(res, { ...updated, _id: updated.id }, 'Subject updated.');
@@ -705,14 +714,19 @@ exports.getQuizMarks = async (req, res) => {
 
       const attempts = await prisma.quizAttempt.findMany({
         where: { quizId: quiz_id, submittedAt: { not: null } },
-        include: { student: { select: { id: true, name: true, enrollmentNumber: true } } },
         orderBy: { score: 'desc' },
       });
+
+      const studentIds = [...new Set(attempts.map((a) => a.studentId).filter(Boolean))];
+      const studentList = studentIds.length
+        ? await prisma.user.findMany({ where: { id: { in: studentIds } }, select: { id: true, name: true, enrollmentNumber: true } })
+        : [];
+      const studentMap = Object.fromEntries(studentList.map((s) => [s.id, s]));
 
       return sendSuccess(res, {
         quiz: { ...quiz, _id: quiz.id, total_marks: quiz.totalMarks, subject_id: { _id: quiz.subjectId, name: quiz.subject?.name, code: quiz.subject?.code } },
         students: attempts.map((a) => ({
-          _id: a.studentId, name: a.student?.name, enrollment_number: a.student?.enrollmentNumber,
+          _id: a.studentId, name: studentMap[a.studentId]?.name, enrollment_number: studentMap[a.studentId]?.enrollmentNumber,
           score: a.score ?? 0, total_marks: quiz.totalMarks,
           percentage: quiz.totalMarks > 0 ? Math.round(((a.score ?? 0) / quiz.totalMarks) * 100) : 0,
           submitted_at: a.submittedAt, is_auto_submitted: a.isAutoSubmitted,
