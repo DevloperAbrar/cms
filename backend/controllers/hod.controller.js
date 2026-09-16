@@ -680,8 +680,15 @@ exports.getMarksEntries = async (req, res) => {
     const marksMap = {};
     for (const m of marksList) marksMap[m.studentId] = m;
 
+    const mapMarks = (m) => !m ? null : {
+      _id: m.id,
+      total_marks: m.totalMarks,
+      max_marks: m.maxMarks,
+      locked: m.locked,
+    };
+
     return sendSuccess(res, {
-      students: students.map((s) => ({ _id: s.id, name: s.name, enrollment_number: s.enrollmentNumber, marks: marksMap[s.id] || null })),
+      students: students.map((s) => ({ _id: s.id, name: s.name, enrollment_number: s.enrollmentNumber, marks: mapMarks(marksMap[s.id] || null) })),
     });
   } catch (err) { return sendError(res, err.message); }
 };
