@@ -133,6 +133,7 @@ exports.getMarksEntries = async (req, res) => {
 exports.submitMarks = async (req, res) => {
   try {
     const { subject_id, branch_id, year, semester, exam_component_id, entries } = req.body;
+    const academicSessionId = req.body.academic_session_id || req.user.currentSessionId || 'default';
     const results = [];
     for (const entry of entries) {
       const marks = await upsertMarks({
@@ -140,7 +141,7 @@ exports.submitMarks = async (req, res) => {
         studentId: entry.student_id,
         subjectId: subject_id,
         branchId: branch_id,
-        academicSessionId: entry.academic_session_id || req.body.academic_session_id,
+        academicSessionId: entry.academic_session_id || academicSessionId,
         year: Number(year), semester: Number(semester),
         examComponentId: exam_component_id,
         totalMarks: entry.total_marks, maxMarks: entry.max_marks,
