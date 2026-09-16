@@ -1,12 +1,6 @@
 const prisma = require('../config/prismaClient');
 
 const getStudentSubjectAttendance = async (studentId) => {
-  const records = await prisma.attendance.findMany({
-    where: { studentId },
-    include: { subject: true },  // we'll need to add subject relation below
-  });
-
-  // Prisma doesn't have a subject relation on Attendance in the schema, so we aggregate manually
   const rows = await prisma.$queryRaw`
     SELECT
       a."subjectId",
@@ -87,8 +81,8 @@ const getStudentMonthlyAttendance = async (studentId, monthsBack = 6) => {
       ) AS percentage
     FROM attendance
     WHERE "studentId" = ${studentId}
-    GROUP BY year, month
-    ORDER BY year, month
+    GROUP BY EXTRACT(YEAR FROM date), EXTRACT(MONTH FROM date)
+    ORDER BY EXTRACT(YEAR FROM date), EXTRACT(MONTH FROM date)
   `;
 
   const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
