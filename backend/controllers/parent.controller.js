@@ -13,9 +13,15 @@ exports.getParentView = async (req, res) => {
 
     const student = await prisma.user.findUnique({
       where: { id: studentId },
-      include: { branch: { include: { department: true } } },
     });
     if (!student) return sendNotFound(res, 'Student not found.');
+
+    const branch = student.branchId
+      ? await prisma.branch.findUnique({
+          where: { id: student.branchId },
+          include: { department: true },
+        })
+      : null;
 
     const [subjectAttendance, overallAttendance, monthlyAttendance, weeklyAttendance] = await Promise.all([
       getStudentSubjectAttendance(studentId),
@@ -29,7 +35,7 @@ exports.getParentView = async (req, res) => {
       include: { subject: { select: { id: true, name: true, code: true } } },
     });
 
-    const streamId = student.branch?.department?.streamId;
+    const streamId = branch?.department?.streamId;
     let componentNameMap = {};
     if (streamId && student.year && student.semester) {
       const examPattern = await prisma.examPattern.findFirst({
@@ -103,7 +109,7 @@ exports.getParentView = async (req, res) => {
     return sendSuccess(res, {
       student: {
         name: student.name, enrollment_number: student.enrollmentNumber,
-        branch: student.branch?.name, branch_code: student.branch?.code,
+        branch: branch?.name, branch_code: branch?.code,
         year: student.year, section: student.section, semester: student.semester,
       },
       attendance: { overall: overallAttendance, subject_wise: subjectAttendance, monthly: monthlyAttendance, weekly: weeklyAttendance },
