@@ -124,7 +124,18 @@ exports.getMarksEntries = async (req, res) => {
       include: { subFields: { orderBy: { displayOrder: 'asc' } } },
     });
 
-    const result = students.map((s) => ({ ...mapStudent(s), marks: marksMap[s.id] || null }));
+    const mapMarks = (m) => !m ? null : {
+      _id: m.id,
+      total_marks: m.totalMarks,
+      max_marks: m.maxMarks,
+      locked: m.locked,
+      sub_field_entries: (m.subFieldEntries || []).map((sf) => ({
+        sub_field_id: sf.subFieldId,
+        marks_obtained: sf.marksObtained,
+      })),
+    };
+
+    const result = students.map((s) => ({ ...mapStudent(s), marks: mapMarks(marksMap[s.id] || null) }));
 
     return sendSuccess(res, { students: result, sub_field_config: subFieldConfig });
   } catch (err) { return sendError(res, err.message); }
