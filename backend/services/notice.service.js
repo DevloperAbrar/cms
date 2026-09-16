@@ -38,25 +38,32 @@ const getNoticesForUser = async (user) => {
         { OR: [{ expiresAt: null }, { expiresAt: { gte: now } }] },
       ],
     },
-    include: {
-      postedBy: { select: { name: true, role: true } },
-    },
     orderBy: { createdAt: 'desc' },
   });
 
+  // Manual poster join (Notice has no @relation to User in schema)
+  const posterIds = [...new Set(notices.map((n) => n.postedById).filter(Boolean))];
+  const posters = posterIds.length
+    ? await prisma.user.findMany({ where: { id: { in: posterIds } }, select: { id: true, name: true, role: true } })
+    : [];
+  const posterMap = Object.fromEntries(posters.map((p) => [p.id, p]));
+
   const userId = (user.id || user._id)?.toString();
-  return notices.map((n) => ({
-    ...n,
-    _id: n.id,
-    posted_by: n.postedBy ? { _id: n.postedById, name: n.postedBy.name, role: n.postedBy.role } : null,
-    is_read: n.readBy?.includes(userId) || false,
-    target_type: n.targetType,
-    target_ids: n.targetIds,
-    schedule_at: n.scheduleAt,
-    expires_at: n.expiresAt,
-    created_at: n.createdAt,
-    updated_at: n.updatedAt,
-  }));
+  return notices.map((n) => {
+    const poster = n.postedById ? posterMap[n.postedById] : null;
+    return {
+      ...n,
+      _id: n.id,
+      posted_by: poster ? { _id: n.postedById, name: poster.name, role: poster.role } : null,
+      is_read: n.readBy?.includes(userId) || false,
+      target_type: n.targetType,
+      target_ids: n.targetIds,
+      schedule_at: n.scheduleAt,
+      expires_at: n.expiresAt,
+      created_at: n.createdAt,
+      updated_at: n.updatedAt,
+    };
+  });
 };
 
 const markAsRead = async (noticeId, userId) => {

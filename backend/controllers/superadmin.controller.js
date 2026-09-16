@@ -502,7 +502,8 @@ exports.getUsers = async (req, res) => {
 exports.createUser = async (req, res) => {
   try {
     const { collegeId } = req.user;
-    const { name, email, role, department_id, branch_id, phone } = req.body;
+    const { name, email, role, department_id, branch_id, phone, year, enrollment_number, semester } = req.body;
+
     if (!name || !email || !role) return sendBadRequest(res, 'Name, email, and role are required.');
 
     if (role === ROLES.SUPERADMIN) return sendBadRequest(res, 'Cannot create superadmin via API.');
@@ -520,6 +521,9 @@ exports.createUser = async (req, res) => {
         branchId: branch_id || null,
         phone: phone || null,
         status: USER_STATUS.ACTIVE,
+        ...(year ? { year: Number(year) } : {}),
+        ...(semester ? { semester: Number(semester) } : {}),
+        ...(enrollment_number ? { enrollmentNumber: enrollment_number } : {}),
       },
     });
     const { deptMap, branchMap } = await buildLookupMaps([user]);
@@ -550,9 +554,10 @@ exports.updateUser = async (req, res) => {
         ...(department_id !== undefined ? { departmentId: department_id || null } : {}),
         ...(branch_id !== undefined ? { branchId: branch_id || null } : {}),
         ...(phone !== undefined ? { phone } : {}),
-        ...(rest.year !== undefined ? { year: rest.year } : {}),
-        ...(rest.semester !== undefined ? { semester: rest.semester } : {}),
-        ...(rest.section !== undefined ? { section: rest.section } : {}),
+        ...(rest.year !== undefined ? { year: rest.year !== '' && rest.year !== null ? Number(rest.year) : null } : {}),
+        ...(rest.semester !== undefined ? { semester: rest.semester !== '' && rest.semester !== null ? Number(rest.semester) : null } : {}),
+        ...(rest.section !== undefined ? { section: rest.section || null } : {}),
+        ...(rest.enrollment_number !== undefined ? { enrollmentNumber: rest.enrollment_number || null } : {}),
       },
     });
     const { deptMap, branchMap } = await buildLookupMaps([user]);
@@ -686,18 +691,18 @@ exports.upsertExamPattern = async (req, res) => {
 
       const p = existing
         ? await tx.examPattern.update({
-            where: { id: existing.id },
-            data: { sgpaFormula: sgpa_formula || 'weighted_average' },
-          })
+          where: { id: existing.id },
+          data: { sgpaFormula: sgpa_formula || 'weighted_average' },
+        })
         : await tx.examPattern.create({
-            data: {
-              collegeId,
-              streamId: stream_id,
-              year: Number(year),
-              semester: Number(semester),
-              sgpaFormula: sgpa_formula || 'weighted_average',
-            },
-          });
+          data: {
+            collegeId,
+            streamId: stream_id,
+            year: Number(year),
+            semester: Number(semester),
+            sgpaFormula: sgpa_formula || 'weighted_average',
+          },
+        });
 
       await tx.examPatternComponent.deleteMany({ where: { examPatternId: p.id } });
       await tx.examPatternComponent.createMany({

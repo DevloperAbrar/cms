@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, UserX, Trash2, Upload, Download } from 'lucide-react';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { PageHeader } from '../../components/common/PageHeader';
 import { Table } from '../../components/common/Table';
 import { Modal } from '../../components/common/Modal';
@@ -18,13 +18,26 @@ const UsersPage = ({ role, title }) => {
   const [deactivating, setDeactivating] = useState(null);
   const [csvFile, setCsvFile] = useState(null);
   const [csvUploading, setCsvUploading] = useState(false);
-  const { register, handleSubmit, reset } = useForm();
+  const { register, handleSubmit, reset, control } = useForm();
+
+  // Watch department_id to filter branches
+  const selectedDeptId = useWatch({ control, name: 'department_id' });
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ['users', role],
     queryFn: () => superadminApi.getUsers({ role }),
   });
   const { data: departments = [] } = useQuery({ queryKey: ['departments'], queryFn: superadminApi.getDepartments });
+  const { data: allBranches = [] } = useQuery({
+    queryKey: ['branches'],
+    queryFn: () => superadminApi.getBranches(),
+    enabled: role === 'student' || role === 'hod' || role === 'faculty',
+  });
+
+  // Filter branches by selected department
+  const filteredBranches = selectedDeptId
+    ? allBranches.filter((b) => b.department_id?._id === selectedDeptId || b.departmentId === selectedDeptId)
+    : allBranches;
 
   const create = useMutation({
     mutationFn: (data) => superadminApi.createUser({ ...data, role }),
@@ -57,7 +70,6 @@ const UsersPage = ({ role, title }) => {
       const fd = new FormData();
       fd.append('file', csvFile);
       const res = await superadminApi.uploadStudentsCSV(fd);
-      // res is already unwrapped by axiosInstance → { imported, skipped, errors }
       const imported = res?.imported ?? res?.data?.imported ?? 0;
       toast.success(`${imported} students imported`);
       if (res?.errors?.length || res?.data?.errors?.length) {
@@ -81,7 +93,7 @@ const UsersPage = ({ role, title }) => {
       toast.error(e.message);
     }
   };
-  
+
   const cols = [
     { key: 'name', header: 'Name' },
     { key: 'email', header: 'Email' },
@@ -93,7 +105,16 @@ const UsersPage = ({ role, title }) => {
     { key: 'status', header: 'Status', render: (r) => <StatusBadge status={r.status} /> },
     { key: 'actions', header: '', render: (r) => (
       <div className="flex gap-2 justify-end">
-        <button className="btn-secondary btn-sm" onClick={() => { reset({ ...r, department_id: r.department_id?._id }); setModal({ mode: 'edit', data: r }); }}><Pencil className="h-3.5 w-3.5" /></button>
+        <button className="btn-secondary btn-sm" onClick={() => {
+       reset({
+        ...r,
+        department_id: r.department_id?._id,
+        branch_id: r.branch_id?._id || r.branch_id,
+        enrollment_number: r.enrollment_number,
+        year: r.year ? String(r.year) : '',
+      });
+          setModal({ mode: 'edit', data: r });
+        }}><Pencil className="h-3.5 w-3.5" /></button>
         <button className="btn-secondary btn-sm" onClick={() => setDeactivating(r)} title="Deactivate"><UserX className="h-3.5 w-3.5" /></button>
         <button className="btn-danger btn-sm" onClick={() => setDeleting(r)}><Trash2 className="h-3.5 w-3.5" /></button>
       </div>
@@ -124,6 +145,7 @@ const UsersPage = ({ role, title }) => {
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div><label className="label">Full Name</label><input className="input" {...register('name', { required: true })} /></div>
           <div><label className="label">Email</label><input type="email" className="input" {...register('email', { required: true })} /></div>
+
           {role !== 'examcontroller' && (
             <div>
               <label className="label">Department</label>
@@ -133,6 +155,38 @@ const UsersPage = ({ role, title }) => {
               </select>
             </div>
           )}
+
+          {/* Branch — required for students so HOD/Faculty can see them */}
+          {(role === 'student' || role === 'hod' || role === 'faculty') && (
+            <div>
+              <label className="label">Branch {role === 'student' && <span className="text-red-500">*</span>}</label>
+              <select className="input" {...register('branch_id', { required: role === 'student' })}>
+                <option value="">Select branch</option>
+                {filteredBranches.map((b) => <option key={b._id} value={b._id}>{b.name} {b.code ? `(${b.code})` : ''}</option>)}
+              </select>
+            </div>
+          )}
+
+          {/* Student-only fields */}
+          {role === 'student' && (
+            <>
+              <div>
+                <label className="label">Year <span className="text-red-500">*</span></label>
+                <select className="input" {...register('year', { required: true })}>
+                  <option value="">Select year</option>
+                  <option value="1">1st Year</option>
+                  <option value="2">2nd Year</option>
+                  <option value="3">3rd Year</option>
+                  <option value="4">4th Year</option>
+                </select>
+              </div>
+              <div>
+                <label className="label">Enrollment Number</label>
+                <input className="input" placeholder="e.g. 2024CS001" {...register('enrollment_number')} />
+              </div>
+            </>
+          )}
+
           <div><label className="label">Phone</label><input className="input" {...register('phone')} /></div>
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" className="btn-secondary" onClick={closeModal}>Cancel</button>

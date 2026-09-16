@@ -194,22 +194,49 @@ exports.unlockMarksComponent = async (req, res) => {
 
 exports.getDeptStudents = async (req, res) => {
   try {
+    const hodDeptId = req.user.departmentId;
+    const hodCollegeId = req.user.collegeId;
+
     const deptBranches = await prisma.branch.findMany({
-      where: { departmentId: req.user.departmentId },
-      select: { id: true },
+      where: { departmentId: hodDeptId, collegeId: hodCollegeId },
+      select: { id: true, name: true, code: true },
     });
     const branchIds = deptBranches.map((b) => b.id);
 
+    // Get ALL students in this college to compare
+    const allStudents = await prisma.user.findMany({
+      where: { collegeId: hodCollegeId, role: 'student', status: { not: 'deleted' } },
+      select: { id: true, name: true, branchId: true, departmentId: true },
+    });
+
     const students = await prisma.user.findMany({
       where: { branchId: { in: branchIds }, role: 'student', status: { not: 'deleted' } },
-      include: { branch: { select: { id: true, name: true, code: true } } },
       orderBy: { name: 'asc' },
     });
 
-    return sendSuccess(res, students.map((s) => ({
-      ...mapUser(s),
-      branch_id: s.branch ? { _id: s.branchId, name: s.branch.name, code: s.branch.code } : s.branchId,
-    })));
+    // Return debug info + students
+    console.log('HOD DEBUG:', {
+      hodDeptId,
+      hodCollegeId,
+      deptBranches,
+      branchIds,
+      allStudentBranchIds: allStudents.map(s => ({ name: s.name, branchId: s.branchId, deptId: s.departmentId })),
+      matchedStudents: students.length,
+    });
+
+    const uniqueBranchIds = [...new Set(students.map((s) => s.branchId).filter(Boolean))];
+    const branches = uniqueBranchIds.length
+      ? await prisma.branch.findMany({ where: { id: { in: uniqueBranchIds } }, select: { id: true, name: true, code: true } })
+      : [];
+    const branchMap = Object.fromEntries(branches.map((b) => [b.id, b]));
+    
+    return sendSuccess(res, students.map((s) => {
+      const b = s.branchId ? branchMap[s.branchId] : null;
+      return {
+        ...mapUser(s),
+        branch_id: b ? { _id: s.branchId, name: b.name, code: b.code } : s.branchId,
+      };
+    }));
   } catch (err) { return sendError(res, err.message); }
 };
 
@@ -656,7 +683,7 @@ exports.getQuizMarks = async (req, res) => {
 
     const quizzes = await prisma.quiz.findMany({
       where: quizWhere,
-      include: { subject: { select: { name: true, code: true } }, branch: { select: { name: true, code: true } } },
+      include: { subject: { select: { name: true, code: true } } },
       orderBy: { startTime: 'desc' },
     });
 
