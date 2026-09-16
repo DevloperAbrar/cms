@@ -323,20 +323,28 @@ exports.getQuizResults = async (req, res) => {
   try {
     const quiz = await prisma.quiz.findFirst({ where: { id: req.params.id, createdById: req.user.id } });
     if (!quiz) return sendNotFound(res);
-
     const attempts = await prisma.quizAttempt.findMany({
       where: { quizId: req.params.id, submittedAt: { not: null } },
-      include: { student: { select: { id: true, name: true, enrollmentNumber: true } } },
       orderBy: { score: 'desc' },
     });
-
+    
+    // Manual student join (QuizAttempt has no @relation to User)
+    const studentIds = [...new Set(attempts.map((a) => a.studentId).filter(Boolean))];
+    const students = studentIds.length
+      ? await prisma.user.findMany({ where: { id: { in: studentIds } }, select: { id: true, name: true, enrollmentNumber: true } })
+      : [];
+    const studentMap = Object.fromEntries(students.map((s) => [s.id, s]));
+    
     return sendSuccess(res, {
       quiz: { title: quiz.title, total_marks: quiz.totalMarks },
-      attempts: attempts.map((a) => ({
-        ...a, _id: a.id,
-        student_id: a.student ? { _id: a.studentId, name: a.student.name, enrollment_number: a.student.enrollmentNumber } : a.studentId,
-        submitted_at: a.submittedAt, is_auto_submitted: a.isAutoSubmitted,
-      })),
+      attempts: attempts.map((a) => {
+        const s = a.studentId ? studentMap[a.studentId] : null;
+        return {
+          ...a, _id: a.id,
+          student_id: s ? { _id: a.studentId, name: s.name, enrollment_number: s.enrollmentNumber } : a.studentId,
+          submitted_at: a.submittedAt, is_auto_submitted: a.isAutoSubmitted,
+        };
+      }),
     });
   } catch (err) { return sendError(res, err.message); }
 };
@@ -379,15 +387,22 @@ exports.sendMessage = async (req, res) => {
 exports.getMessages = async (req, res) => {
   try {
     const messages = await prisma.message.findMany({
-      where: {
-        OR: [{ senderId: req.user.id }, { recipientId: req.user.id }],
-      },
-      include: {
-        sender: { select: { name: true, role: true } },
-        recipient: { select: { name: true, role: true } },
-      },
+      where: { OR: [{ senderId: req.user.id }, { recipientId: req.user.id }] },
       orderBy: { createdAt: 'desc' },
     });
+    
+    // Manual user join (Message has no @relation to User)
+    const userIds = [...new Set([...messages.map((m) => m.senderId), ...messages.map((m) => m.recipientId)].filter(Boolean))];
+    const users = userIds.length
+      ? await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true, role: true } })
+      : [];
+    const userMap = Object.fromEntries(users.map((u) => [u.id, u]));
+    
+    return sendSuccess(res, messages.map((m) => ({
+      ...m, _id: m.id,
+      sender_id: { _id: m.senderId, name: userMap[m.senderId]?.name, role: userMap[m.senderId]?.role },
+      recipient_id: { _id: m.recipientId, name: userMap[m.recipientId]?.name, role: userMap[m.recipientId]?.role },
+    })));
     return sendSuccess(res, messages.map((m) => ({
       ...m, _id: m.id,
       sender_id: { _id: m.senderId, name: m.sender?.name, role: m.sender?.role },

@@ -112,7 +112,35 @@ exports.getDeptFaculty = async (req, res) => {
       where: { departmentId: req.user.departmentId, role: { in: ['faculty', 'coordinator'] }, status: 'active' },
       select: { id: true, name: true, email: true, role: true },
     });
-    return sendSuccess(res, faculty.map(mapUser));
+
+    // Manual join for coordinator branches (no @relation in schema)
+    const coordinatorIds = faculty.filter((f) => f.role === 'coordinator').map((f) => f.id);
+    const coordBranches = coordinatorIds.length
+      ? await prisma.coordinatorBranch.findMany({
+          where: { userId: { in: coordinatorIds } },
+          select: { userId: true, branchId: true, year: true },
+        })
+      : [];
+
+    // Fetch branch names
+    const branchIds = [...new Set(coordBranches.map((cb) => cb.branchId))];
+    const branches = branchIds.length
+      ? await prisma.branch.findMany({ where: { id: { in: branchIds } }, select: { id: true, name: true, code: true } })
+      : [];
+    const branchMap = Object.fromEntries(branches.map((b) => [b.id, b]));
+
+    // Group by userId
+    const cbByUser = {};
+    coordBranches.forEach((cb) => {
+      if (!cbByUser[cb.userId]) cbByUser[cb.userId] = [];
+      const b = branchMap[cb.branchId];
+      cbByUser[cb.userId].push({ branch_id: b ? { _id: cb.branchId, name: b.name, code: b.code } : cb.branchId, year: cb.year });
+    });
+
+    return sendSuccess(res, faculty.map((u) => ({
+      ...mapUser(u),
+      coordinator_branches: cbByUser[u.id] || [],
+    })));
   } catch (err) { return sendError(res, err.message); }
 };
 
@@ -140,16 +168,29 @@ exports.getDeptSubjects = async (req, res) => {
     if (req.query.year) where.year = Number(req.query.year);
     if (req.query.semester) where.semester = Number(req.query.semester);
 
+
     const subjects = await prisma.subject.findMany({
       where,
       include: { branch: { select: { id: true, name: true, code: true } } },
       orderBy: { name: 'asc' },
     });
+    
+    // Manual faculty join (assignedFacultyId has no @relation)
+    const facultyIds = [...new Set(subjects.map((s) => s.assignedFacultyId).filter(Boolean))];
+    const facultyList = facultyIds.length
+      ? await prisma.user.findMany({ where: { id: { in: facultyIds } }, select: { id: true, name: true, email: true } })
+      : [];
+    const facultyMap = Object.fromEntries(facultyList.map((f) => [f.id, f]));
+    
+    return sendSuccess(res, subjects.map((s) => {
+      const f = s.assignedFacultyId ? facultyMap[s.assignedFacultyId] : null;
+      return {
+        _id: s.id, id: s.id, name: s.name, code: s.code, year: s.year, semester: s.semester, type: s.type, credits: s.credits,
+        branch_id: s.branch ? { _id: s.branchId, name: s.branch.name, code: s.branch.code } : s.branchId,
+        assigned_faculty: f ? { _id: s.assignedFacultyId, name: f.name, email: f.email } : null,
+      };
+    }));
 
-    return sendSuccess(res, subjects.map((s) => ({
-      _id: s.id, id: s.id, name: s.name, code: s.code, year: s.year, semester: s.semester, type: s.type, credits: s.credits,
-      branch_id: s.branch ? { _id: s.branchId, name: s.branch.name, code: s.branch.code } : s.branchId,
-    })));
   } catch (err) { return sendError(res, err.message); }
 };
 
@@ -160,7 +201,10 @@ exports.assignCoordinator = async (req, res) => {
       return sendBadRequest(res, 'faculty_id and coordinator_branches are required.');
     }
 
-    await prisma.user.update({ where: { id: faculty_id }, data: { role: 'coordinator' } });
+    // Keep role as 'faculty' — coordinator status is tracked via CoordinatorBranch table
+    // Only update role to coordinator if they are currently faculty
+    const user = await prisma.user.findFirst({ where: { id: faculty_id } });
+    if (!user) return sendNotFound(res, 'Faculty not found.');
 
     await prisma.coordinatorBranch.deleteMany({ where: { userId: faculty_id } });
     await prisma.coordinatorBranch.createMany({

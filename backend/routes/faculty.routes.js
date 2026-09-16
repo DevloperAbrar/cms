@@ -18,7 +18,7 @@ const imageUpload = multer({
   },
 });
 
-router.use(authenticate, authorize(ROLES.FACULTY));
+router.use(authenticate, authorize(ROLES.FACULTY, ROLES.COORDINATOR));
 
 // ─── STUDENTS & SUBJECTS ─────────────────────────────────────────────────────
 router.get('/students', ctrl.getMyStudents);
