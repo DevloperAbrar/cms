@@ -11,8 +11,13 @@ const ROLE_HOME = {
 };
 
 export const RoleGuard = ({ allowedRoles, children }) => {
-  const { user, isAuthenticated } = useAuthStore();
+  const { user, isAuthenticated, _hasHydrated } = useAuthStore();
   const location = useLocation();
+
+  // Wait for zustand to rehydrate from localStorage before making any decision
+  if (!_hasHydrated) {
+    return null; // or a loading spinner if you prefer
+  }
 
   if (!isAuthenticated || !user) {
     return <Navigate to="/" state={{ from: location }} replace />;

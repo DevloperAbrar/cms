@@ -98,7 +98,13 @@ import PlatformGuard from './guards/PlatformGuard';
 // ─────────────────────────────────────────────────────────────────────────────
 
 const HomeRedirect = () => {
-  const { user, isAuthenticated } = useAuthStore();
+  const { user, isAuthenticated, _hasHydrated } = useAuthStore();
+
+  // Don't render anything until zustand has loaded from localStorage
+  if (!_hasHydrated) {
+    return null;
+  }
+
   if (isAuthenticated && user) return <Navigate to={getRoleHome(user.role)} replace />;
   return <SuperAdminLogin />;
 };
