@@ -5,7 +5,6 @@ import { useForm, useFieldArray } from 'react-hook-form';
 import { PageHeader } from '../../components/common/PageHeader';
 import { superadminApi } from '../../api/superadmin.api';
 import { getSemestersForYear } from '../../utils/semester';
-import { getSemestersForYear } from '../../utils/semester';
 import toast from 'react-hot-toast';
 
 const ENTERED_BY_OPTIONS = ['faculty', 'coordinator', 'examcontroller'];
