@@ -199,6 +199,10 @@ const UsersPage = ({ role, title }) => {
                 <input className="input" placeholder="e.g. A" {...register('section')} />
               </div>
               <div>
+                <label className="label">Section</label>
+                <input className="input" placeholder="e.g. A" {...register('section')} />
+              </div>
+              <div>
                 <label className="label">Enrollment Number</label>
                 <input className="input" placeholder="e.g. 2024CS001" {...register('enrollment_number')} />
               </div>

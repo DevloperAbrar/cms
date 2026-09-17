@@ -502,6 +502,7 @@ exports.getUsers = async (req, res) => {
 exports.createUser = async (req, res) => {
   try {
     const { collegeId } = req.user;
+    
     const { name, email, role, department_id, branch_id, phone, year, enrollment_number, semester, section } = req.body;
 
     if (!name || !email || !role) return sendBadRequest(res, 'Name, email, and role are required.');
@@ -524,6 +525,7 @@ exports.createUser = async (req, res) => {
         ...(year ? { year: Number(year) } : {}),
         ...(semester ? { semester: Number(semester) } : {}),
         ...(enrollment_number ? { enrollmentNumber: enrollment_number } : {}),
+        ...(section ? { section } : {}),
         ...(section ? { section } : {}),
       },
     });
