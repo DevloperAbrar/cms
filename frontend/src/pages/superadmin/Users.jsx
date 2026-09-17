@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, UserX, Trash2, Upload, Download } from 'lucide-react';
+import { Plus, Pencil, UserX, Trash2, Upload, Download, Search, X } from 'lucide-react';
 import { useForm, useWatch } from 'react-hook-form';
 import { PageHeader } from '../../components/common/PageHeader';
 import { Table } from '../../components/common/Table';
@@ -20,13 +20,11 @@ const UsersPage = ({ role, title }) => {
   const [csvUploading, setCsvUploading] = useState(false);
   const { register, handleSubmit, reset, control } = useForm();
 
-  // Watch department_id to filter branches
+  // Filter state (only for students)
+  const [filters, setFilters] = useState({ search: '', department_id: '', branch_id: '', year: '', semester: '', section: '' });
+
   const selectedDeptId = useWatch({ control, name: 'department_id' });
 
-  const { data: users = [], isLoading } = useQuery({
-    queryKey: ['users', role],
-    queryFn: () => superadminApi.getUsers({ role }),
-  });
   const { data: departments = [] } = useQuery({ queryKey: ['departments'], queryFn: superadminApi.getDepartments });
   const { data: allBranches = [] } = useQuery({
     queryKey: ['branches'],
@@ -34,9 +32,20 @@ const UsersPage = ({ role, title }) => {
     enabled: role === 'student' || role === 'hod' || role === 'faculty',
   });
 
-  // Filter branches by selected department
+  // Active query params — only send non-empty filters
+  const activeParams = { role, ...Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== '')) };
+  const { data: users = [], isLoading } = useQuery({
+    queryKey: ['users', role, activeParams],
+    queryFn: () => superadminApi.getUsers(activeParams),
+  });
+
   const filteredBranches = selectedDeptId
     ? allBranches.filter((b) => b.department_id?._id === selectedDeptId || b.departmentId === selectedDeptId)
+    : allBranches;
+
+  // Branches filtered by filter dept for the filter bar
+  const filterBranches = filters.department_id
+    ? allBranches.filter((b) => b.department_id?._id === filters.department_id || b.departmentId === filters.department_id)
     : allBranches;
 
   const create = useMutation({
@@ -94,25 +103,25 @@ const UsersPage = ({ role, title }) => {
     }
   };
 
+  const setFilter = (key, value) => setFilters((f) => ({ ...f, [key]: value, ...(key === 'department_id' ? { branch_id: '' } : {}) }));
+  const clearFilters = () => setFilters({ search: '', department_id: '', branch_id: '', year: '', semester: '', section: '' });
+  const hasActiveFilters = Object.values(filters).some((v) => v !== '');
+
   const cols = [
     { key: 'name', header: 'Name' },
     { key: 'email', header: 'Email' },
     ...(role === 'student' ? [
       { key: 'enrollment_number', header: 'Enrollment No' },
       { key: 'year', header: 'Year' },
+      { key: 'semester', header: 'Sem' },
+      { key: 'section', header: 'Section' },
     ] : []),
     { key: 'dept', header: 'Department', render: (r) => r.department_id?.name || '—' },
     { key: 'status', header: 'Status', render: (r) => <StatusBadge status={r.status} /> },
     { key: 'actions', header: '', render: (r) => (
       <div className="flex gap-2 justify-end">
         <button className="btn-secondary btn-sm" onClick={() => {
-       reset({
-        ...r,
-        department_id: r.department_id?._id,
-        branch_id: r.branch_id?._id || r.branch_id,
-        enrollment_number: r.enrollment_number,
-        year: r.year ? String(r.year) : '',
-      });
+          reset({ ...r, department_id: r.department_id?._id, branch_id: r.branch_id?._id || r.branch_id, enrollment_number: r.enrollment_number, year: r.year ? String(r.year) : '', semester: r.semester ? String(r.semester) : '', section: r.section || '' });
           setModal({ mode: 'edit', data: r });
         }}><Pencil className="h-3.5 w-3.5" /></button>
         <button className="btn-secondary btn-sm" onClick={() => setDeactivating(r)} title="Deactivate"><UserX className="h-3.5 w-3.5" /></button>
@@ -139,6 +148,69 @@ const UsersPage = ({ role, title }) => {
           <button className="btn-primary" onClick={() => { reset({}); setModal({ mode: 'create' }); }}><Plus className="h-4 w-4" />Add {title.slice(0, -1)}</button>
         </div>
       } />
+
+      {/* Filter bar — students only */}
+      {role === 'student' && (
+        <div className="card mb-4">
+          <div className="flex flex-wrap gap-3 items-end">
+            {/* Search */}
+            <div className="flex-1 min-w-[180px]">
+              <label className="label">Search</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input className="input pl-9" placeholder="Name, email, enrollment..." value={filters.search} onChange={(e) => setFilter('search', e.target.value)} />
+              </div>
+            </div>
+            {/* Department */}
+            <div className="min-w-[160px]">
+              <label className="label">Department</label>
+              <select className="input" value={filters.department_id} onChange={(e) => setFilter('department_id', e.target.value)}>
+                <option value="">All departments</option>
+                {departments.map((d) => <option key={d._id} value={d._id}>{d.name}</option>)}
+              </select>
+            </div>
+            {/* Branch */}
+            <div className="min-w-[160px]">
+              <label className="label">Branch</label>
+              <select className="input" value={filters.branch_id} onChange={(e) => setFilter('branch_id', e.target.value)}>
+                <option value="">All branches</option>
+                {filterBranches.map((b) => <option key={b._id} value={b._id}>{b.name}</option>)}
+              </select>
+            </div>
+            {/* Year */}
+            <div className="min-w-[110px]">
+              <label className="label">Year</label>
+              <select className="input" value={filters.year} onChange={(e) => setFilter('year', e.target.value)}>
+                <option value="">All years</option>
+                <option value="1">Year 1</option>
+                <option value="2">Year 2</option>
+                <option value="3">Year 3</option>
+                <option value="4">Year 4</option>
+              </select>
+            </div>
+            {/* Semester */}
+            <div className="min-w-[120px]">
+              <label className="label">Semester</label>
+              <select className="input" value={filters.semester} onChange={(e) => setFilter('semester', e.target.value)}>
+                <option value="">All sems</option>
+                {[1,2,3,4,5,6,7,8].map((s) => <option key={s} value={s}>Sem {s}</option>)}
+              </select>
+            </div>
+            {/* Section */}
+            <div className="min-w-[100px]">
+              <label className="label">Section</label>
+              <input className="input" placeholder="e.g. A" value={filters.section} onChange={(e) => setFilter('section', e.target.value)} />
+            </div>
+            {/* Clear */}
+            {hasActiveFilters && (
+              <button className="btn-secondary flex items-center gap-1" onClick={clearFilters}>
+                <X className="h-4 w-4" /> Clear
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="card"><Table columns={cols} data={users} isLoading={isLoading} emptyTitle={`No ${title.toLowerCase()} found`} /></div>
 
       <Modal isOpen={!!modal} onClose={closeModal} title={modal?.mode === 'create' ? `Add ${title.slice(0, -1)}` : `Edit ${title.slice(0, -1)}`}>
@@ -156,7 +228,6 @@ const UsersPage = ({ role, title }) => {
             </div>
           )}
 
-          {/* Branch — required for students so HOD/Faculty can see them */}
           {(role === 'student' || role === 'hod' || role === 'faculty') && (
             <div>
               <label className="label">Branch {role === 'student' && <span className="text-red-500">*</span>}</label>
@@ -167,7 +238,6 @@ const UsersPage = ({ role, title }) => {
             </div>
           )}
 
-          {/* Student-only fields */}
           {role === 'student' && (
             <>
               <div>
@@ -184,14 +254,7 @@ const UsersPage = ({ role, title }) => {
                 <label className="label">Semester <span className="text-red-500">*</span></label>
                 <select className="input" {...register('semester', { required: true })}>
                   <option value="">Select semester</option>
-                  <option value="1">Semester 1</option>
-                  <option value="2">Semester 2</option>
-                  <option value="3">Semester 3</option>
-                  <option value="4">Semester 4</option>
-                  <option value="5">Semester 5</option>
-                  <option value="6">Semester 6</option>
-                  <option value="7">Semester 7</option>
-                  <option value="8">Semester 8</option>
+                  {[1,2,3,4,5,6,7,8].map((s) => <option key={s} value={String(s)}>Semester {s}</option>)}
                 </select>
               </div>
               <div>
@@ -212,6 +275,7 @@ const UsersPage = ({ role, title }) => {
           </div>
         </form>
       </Modal>
+
       <ConfirmDialog isOpen={!!deactivating} onClose={() => setDeactivating(null)} onConfirm={() => deactivate.mutate(deactivating._id)} title="Deactivate User" message={`Deactivate "${deactivating?.name}"?`} confirmLabel="Deactivate" variant="danger" isLoading={deactivate.isPending} />
       <ConfirmDialog isOpen={!!deleting} onClose={() => setDeleting(null)} onConfirm={() => remove.mutate(deleting._id)} title="Delete User" message={`Permanently delete "${deleting?.name}"? ${role === 'student' ? 'Student data will be retained.' : ''}`} isLoading={remove.isPending} />
     </div>

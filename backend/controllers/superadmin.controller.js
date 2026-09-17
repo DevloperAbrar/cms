@@ -484,11 +484,20 @@ exports.deleteSubject = async (req, res) => {
 exports.getUsers = async (req, res) => {
   try {
     const { collegeId } = req.user;
-    const { role, department_id, status } = req.query;
+    const { role, department_id, branch_id, year, semester, section, status, search } = req.query;
     const where = { collegeId };
     if (role) where.role = role;
     if (department_id) where.departmentId = department_id;
+    if (branch_id) where.branchId = branch_id;
+    if (year) where.year = Number(year);
+    if (semester) where.semester = Number(semester);
+    if (section) where.section = section;
     if (status) where.status = status;
+    if (search) where.OR = [
+      { name: { contains: search, mode: 'insensitive' } },
+      { email: { contains: search, mode: 'insensitive' } },
+      { enrollmentNumber: { contains: search, mode: 'insensitive' } },
+    ];
 
     const users = await prisma.user.findMany({ where, orderBy: { name: 'asc' } });
     const { deptMap, branchMap } = await buildLookupMaps(users);
