@@ -149,8 +149,8 @@ const UsersPage = ({ role, title }) => {
         </div>
       } />
 
-      {/* Filter bar — students only */}
-      {role === 'student' && (
+      {/* Filter bar — students and faculty */}
+      {(role === 'student' || role === 'faculty') && (
         <div className="card mb-4">
           <div className="flex flex-wrap gap-3 items-end">
             {/* Search */}
