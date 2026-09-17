@@ -15,6 +15,7 @@ router.use(authenticate, authorize(ROLES.EXAM_CONTROLLER));
 router.get('/subjects', ctrl.getAllSubjects);
 router.get('/branches', ctrl.getAllBranches);
 router.get('/students', ctrl.getStudents);
+router.get('/exam-pattern', ctrl.getExamPattern);
 
 // ─── MARKS ───────────────────────────────────────────────────────────────────
 router.get('/marks', ctrl.getMarksEntries);

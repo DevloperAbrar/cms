@@ -22,6 +22,39 @@ exports.getAllSubjects = async (req, res) => {
   } catch (err) { return sendError(res, err.message); }
 };
 
+exports.getExamPattern = async (req, res) => {
+  try {
+    const { subject_id, semester } = req.query;
+    if (!subject_id || !semester) return sendBadRequest(res, 'subject_id and semester are required.');
+
+    const subject = await prisma.subject.findUnique({
+      where: { id: subject_id },
+      include: { branch: { include: { department: { include: { stream: true } } } } },
+    });
+    if (!subject) return sendNotFound(res, 'Subject not found.');
+
+    const streamId = subject.branch?.department?.streamId;
+    if (!streamId) return sendNotFound(res, 'Stream not found for subject.');
+
+    const pattern = await prisma.examPattern.findFirst({
+      where: { streamId, year: subject.year, semester: Number(semester) },
+      include: { components: true },
+    });
+
+    if (!pattern) return sendNotFound(res, 'No exam pattern found for this subject + semester.');
+
+    return sendSuccess(res, {
+      ...pattern, _id: pattern.id,
+      stream_id: streamId,
+      components: pattern.components.map((c) => ({
+        _id: c.id, id: c.id, name: c.name, max_marks: c.maxMarks,
+        weightage_percent: c.weightagePercent, entered_by: c.enteredBy,
+        include_in_sgpa: c.includeInSgpa, pass_marks: c.passMarks,
+      })),
+    });
+  } catch (err) { return sendError(res, err.message); }
+};
+
 exports.getAllBranches = async (req, res) => {
   try {
     const branches = await prisma.branch.findMany({

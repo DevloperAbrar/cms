@@ -6,6 +6,7 @@ export const examControllerApi = {
   getAllSubjects: (params) => api.get(`${base}/subjects`, { params }).then((r) => r.data),
   getAllBranches: () => api.get(`${base}/branches`).then((r) => r.data),
   getStudents: (params) => api.get(`${base}/students`, { params }).then((r) => r.data),
+  getExamPattern: (params) => api.get(`${base}/exam-pattern`, { params }).then((r) => r.data),
 
   getMarksEntries: (params) => api.get(`${base}/marks`, { params }).then((r) => r.data),
   submitEndSemMarks: (data) => api.post(`${base}/marks`, data).then((r) => r.data),

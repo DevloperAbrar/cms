@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { examControllerApi } from '../../api/examcontroller.api';
 import { getSemestersForYear } from '../../utils/semester';
@@ -26,6 +26,27 @@ const ExamControllerMarksUpload = () => {
     queryFn: () => examControllerApi.getAllSubjects({ branch_id: filters.branch_id, year: filters.year }),
     enabled: !!(filters.branch_id && filters.year),
   });
+
+  // Fetch the exam pattern for the selected subject + semester so the
+  // Component dropdown only ever shows components that actually exist for it.
+  const patternReady = !!(filters.subject_id && filters.semester);
+  const { data: patternData, status: patternStatus } = useQuery({
+    queryKey: ['ec-exam-pattern', filters.subject_id, filters.semester],
+    queryFn: () => examControllerApi.getExamPattern({ subject_id: filters.subject_id, semester: filters.semester }),
+    enabled: patternReady,
+    retry: false,
+    throwOnError: false,
+  });
+
+  const [components, setComponents] = useState([]);
+  useEffect(() => {
+    if (patternStatus === 'success') {
+      const comps = patternData?.data?.components || patternData?.components || [];
+      setComponents(comps.filter((c) => ['examcontroller', 'coordinator'].includes(c.entered_by)));
+    } else {
+      setComponents([]);
+    }
+  }, [patternStatus, patternData]);
 
   const ready = !!(
     filters.branch_id &&
@@ -83,20 +104,28 @@ const ExamControllerMarksUpload = () => {
             <select
               className="input"
               value={filters.subject_id}
-              onChange={(e) => setFilters((p) => ({ ...p, subject_id: e.target.value }))}
+              onChange={(e) => setFilters((p) => ({ ...p, subject_id: e.target.value, exam_component_id: '' }))}
             >
               <option value="">Select subject</option>
               {subjects.map((s) => <option key={s._id} value={s._id}>{s.name} ({s.code})</option>)}
             </select>
           </div>
           <div>
-            <label className="label">Component ID</label>
-            <input
+            <label className="label">Exam Component</label>
+            <select
               className="input"
-              placeholder="Exam component ID"
               value={filters.exam_component_id}
+              disabled={!patternReady || components.length === 0}
               onChange={(e) => setFilters((p) => ({ ...p, exam_component_id: e.target.value }))}
-            />
+            >
+              <option value="">
+                {!patternReady ? 'Select subject & semester first' : components.length === 0 ? 'No component configured for EC/coordinator' : 'Select Component'}
+              </option>
+              {components.map((c) => <option key={c._id} value={c._id}>{c.name} — {c.max_marks} marks</option>)}
+            </select>
+            {patternReady && patternStatus === 'error' && (
+              <p className="text-xs text-red-500 mt-1">No exam pattern found for this year/semester.</p>
+            )}
           </div>
         </div>
       </div>
