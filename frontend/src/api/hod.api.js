@@ -62,6 +62,7 @@ export const hodApi = {
     api.post(`${base}/faculty-attendance`, { records }).then((r) => r.data),
 
   // Exam Pattern
+  listExamPatterns: () => api.get(`${base}/exam-pattern/list`).then((r) => r.data),
   getExamPattern: (params) => api.get(`${base}/exam-pattern`, { params }).then((r) => r.data),
   upsertExamPattern: (data) => api.post(`${base}/exam-pattern`, data).then((r) => r.data),
 

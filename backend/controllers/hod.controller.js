@@ -622,6 +622,32 @@ exports.getExamPattern = async (req, res) => {
   } catch (err) { return sendError(res, err.message); }
 };
 
+exports.listExamPatterns = async (req, res) => {
+  try {
+    const { collegeId, departmentId } = req.user;
+    const dept = await prisma.department.findFirst({ where: { id: departmentId } });
+    if (!dept?.streamId) return sendSuccess(res, []);
+    const patterns = await prisma.examPattern.findMany({
+      where: { collegeId, streamId: dept.streamId },
+      include: { components: true },
+      orderBy: [{ year: 'asc' }, { semester: 'asc' }],
+    });
+    return sendSuccess(res, patterns.map((p) => ({
+      year: p.year,
+      semester: p.semester,
+      label: `Year ${p.year} — Semester ${p.semester}`,
+      components: p.components.map((c) => ({
+        name: c.name,
+        max_marks: c.maxMarks,
+        weightage_percent: c.weightagePercent,
+        entered_by: c.enteredBy,
+        pass_marks: c.passMarks,
+        include_in_sgpa: c.includeInSgpa,
+      })),
+    })));
+  } catch (err) { return sendError(res, err.message); }
+};
+
 exports.upsertExamPattern = async (req, res) => {
   try {
     const { year, semester, components, sgpa_formula } = req.body;

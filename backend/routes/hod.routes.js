@@ -56,6 +56,7 @@ router.get('/faculty-attendance', ctrl.getFacultyAttendance);
 router.post('/faculty-attendance', auditLog('MARK', 'FacultyAttendance'), ctrl.markFacultyAttendance);
 
 // ─── EXAM PATTERN ────────────────────────────────────────────────────────────
+router.get('/exam-pattern/list', ctrl.listExamPatterns);
 router.get('/exam-pattern', ctrl.getExamPattern);
 router.post('/exam-pattern', auditLog('UPSERT', 'ExamPattern'), ctrl.upsertExamPattern);
 router.get('/marks/entries', ctrl.getMarksEntries);
