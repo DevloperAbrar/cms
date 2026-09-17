@@ -121,8 +121,6 @@ export const FacultyLayout = createLayout([
 
 export const ExamControllerLayout = createLayout([
   { to: '/examcontroller', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/examcontroller/endsem-marks', label: 'End Sem Marks', icon: ClipboardList },
-  { to: '/examcontroller/marks-upload', label: 'Marks Upload', icon: FileText },
   { to: '/examcontroller/final-results', label: 'Final Results', icon: BarChart2 },
 ]);
 

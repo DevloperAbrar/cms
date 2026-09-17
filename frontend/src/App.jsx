@@ -77,8 +77,6 @@ import FacultyQuizEdit from './pages/faculty/QuizEdit';
 
 // Exam Controller pages
 import ExamControllerDashboard from './pages/examcontroller/Dashboard';
-import ExamControllerEndSemMarks from './pages/examcontroller/EndSemMarks';
-import ExamControllerMarksUpload from './pages/examcontroller/MarksUpload';
 
 // Student pages
 import StudentDashboard from './pages/student/Dashboard';
@@ -210,8 +208,6 @@ const App = () => {
       {/* Exam Controller */}
       <Route path="/examcontroller" element={<RoleGuard allowedRoles={['examcontroller']}><ExamControllerLayout /></RoleGuard>}>
         <Route index element={<ExamControllerDashboard />} />
-        <Route path="endsem-marks" element={<ExamControllerEndSemMarks />} />
-        <Route path="marks-upload" element={<ExamControllerMarksUpload />} />
         <Route path="final-results" element={<ExamControllerFinalResults />} />
       </Route>
 

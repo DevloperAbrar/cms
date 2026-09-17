@@ -9,6 +9,7 @@ import { examControllerApi } from '../../api/examcontroller.api';
 import { PageHeader } from '../../components/common/PageHeader';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import { EmptyState } from '../../components/common/EmptyState';
+import { MAX_YEAR, getSemestersForYear } from '../../utils/semester';
 import toast from 'react-hot-toast';
 
 const buildDistribution = (students, config, valuesMap) => {
@@ -63,27 +64,16 @@ const StatsBar = ({ students, config, valuesMap }) => {
 const ExamControllerFinalResults = () => {
   const qc = useQueryClient();
 
-  const [selectedConfig, setSelectedConfig] = useState('');
-  const [selectedStream, setSelectedStream] = useState('');
   const [selectedDept, setSelectedDept] = useState('');
   const [selectedBranch, setSelectedBranch] = useState('');
+  const [selectedYear, setSelectedYear] = useState('');
+  const [selectedSemester, setSelectedSemester] = useState('');
   const [valuesMap, setValuesMap] = useState({});
   const [viewMode, setViewMode] = useState('table');
 
-  const { data: configs = [], isLoading: configsLoading } = useQuery({
-    queryKey: ['ec-final-configs'],
-    queryFn: examControllerApi.getFinalResultConfigs,
-  });
-
-  const { data: streams = [] } = useQuery({
-    queryKey: ['ec-fr-streams'],
-    queryFn: examControllerApi.getFinalResultStreams,
-  });
-
-  const { data: departments = [] } = useQuery({
-    queryKey: ['ec-fr-departments', selectedStream],
-    queryFn: () => examControllerApi.getFinalResultDepartments({ stream_id: selectedStream }),
-    enabled: !!selectedStream,
+  const { data: departments = [], isLoading: configsLoading } = useQuery({
+    queryKey: ['ec-fr-departments'],
+    queryFn: examControllerApi.getFinalResultDepartments,
   });
 
   const { data: branches = [] } = useQuery({
@@ -92,7 +82,17 @@ const ExamControllerFinalResults = () => {
     enabled: !!selectedDept,
   });
 
-  const ready = !!(selectedConfig && selectedBranch);
+  // The result "config" (label, metric type, max/passing value) is resolved
+  // automatically from Year + Semester instead of asking the user to pick it —
+  // each year/semester combo is expected to have exactly one active config.
+  const { data: matchingConfigs = [], isLoading: configLookupLoading } = useQuery({
+    queryKey: ['ec-fr-config-lookup', selectedYear, selectedSemester],
+    queryFn: () => examControllerApi.getFinalResultConfigs({ year: selectedYear, semester: selectedSemester }),
+    enabled: !!(selectedYear && selectedSemester),
+  });
+  const selectedConfig = matchingConfigs[0]?._id || '';
+
+  const ready = !!(selectedBranch && selectedConfig);
 
   const { data: studentsData, isLoading: studentsLoading } = useQuery({
     queryKey: ['ec-final-students', selectedConfig, selectedBranch],
@@ -176,33 +176,8 @@ const ExamControllerFinalResults = () => {
       <div className="card p-4">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <div>
-            <label className="label">Result Config</label>
-            <select className="input" value={selectedConfig}
-              onChange={(e) => { setSelectedConfig(e.target.value); setValuesMap({}); }}>
-              <option value="">Select config</option>
-              {configs.map((c) => (
-                <option key={c._id} value={c._id}>
-                  {c.label} — Year {c.year} Sem {c.semester}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="label">Stream</label>
-            <select className="input" value={selectedStream}
-              onChange={(e) => {
-                setSelectedStream(e.target.value);
-                setSelectedDept('');
-                setSelectedBranch('');
-                setValuesMap({});
-              }}>
-              <option value="">Select stream</option>
-              {streams.map((s) => <option key={s._id} value={s._id}>{s.name}</option>)}
-            </select>
-          </div>
-          <div>
             <label className="label">Department</label>
-            <select className="input" value={selectedDept} disabled={!selectedStream}
+            <select className="input" value={selectedDept}
               onChange={(e) => {
                 setSelectedDept(e.target.value);
                 setSelectedBranch('');
@@ -220,10 +195,40 @@ const ExamControllerFinalResults = () => {
               {branches.map((b) => <option key={b._id} value={b._id}>{b.name}</option>)}
             </select>
           </div>
+          <div>
+            <label className="label">Year</label>
+            <select className="input" value={selectedYear}
+              onChange={(e) => {
+                setSelectedYear(e.target.value);
+                setSelectedSemester('');
+                setValuesMap({});
+              }}>
+              <option value="">Select year</option>
+              {Array.from({ length: MAX_YEAR }, (_, i) => i + 1).map((y) => (
+                <option key={y} value={y}>Year {y}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="label">Semester</label>
+            <select className="input" value={selectedSemester} disabled={!selectedYear}
+              onChange={(e) => { setSelectedSemester(e.target.value); setValuesMap({}); }}>
+              <option value="">{selectedYear ? 'Select semester' : 'Select year first'}</option>
+              {getSemestersForYear(selectedYear).map((s) => <option key={s} value={s}>Sem {s}</option>)}
+            </select>
+          </div>
         </div>
       </div>
 
-      {!ready && <EmptyState title="Select a config and branch above to begin" />}
+      {!!(selectedYear && selectedSemester) && !configLookupLoading && !selectedConfig && (
+        <EmptyState
+          title="No result config found"
+          description="No active Final Result config exists for this Year/Semester yet. Ask the Super Admin to set one up (label, metric type, max/passing value)."
+        />
+      )}
+      {!ready && !(selectedYear && selectedSemester && !configLookupLoading && !selectedConfig) && (
+        <EmptyState title="Select Department, Branch, Year and Semester above to begin" />
+      )}
       {ready && studentsLoading && <LoadingSpinner />}
       {ready && !studentsLoading && students.length === 0 && (
         <EmptyState

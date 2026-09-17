@@ -34,7 +34,7 @@ const ExamControllerDashboard = () => {
     <div className="space-y-6">
       <PageHeader
         title={`Welcome, ${user?.name?.split(' ')[0] || 'Exam Controller'}!`}
-        description="Institute-wide end semester marks management"
+        description="Institute-wide final result (CGPA / percentage) publishing"
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -46,7 +46,7 @@ const ExamControllerDashboard = () => {
       <div className="card p-5">
         <h2 className="text-sm font-semibold text-gray-900 mb-1">Access Scope</h2>
         <p className="text-sm text-gray-500">
-          You have institute-wide access for end semester marks entry only. Navigate to <strong>End Sem Marks</strong> to begin entering or uploading marks for any branch.
+          You have institute-wide access to enter and publish final results (CGPA / percentage) only. Navigate to <strong>Final Results</strong>, pick a Department, Branch, Year and Semester, and enter each student's final value.
         </p>
       </div>
     </div>
