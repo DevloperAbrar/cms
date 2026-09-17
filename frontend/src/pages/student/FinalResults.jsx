@@ -6,6 +6,7 @@ import {
 } from 'recharts';
 import { Trophy, TrendingUp, Users, Award, ChevronDown, ChevronUp } from 'lucide-react';
 import { studentApi } from '../../api/student.api';
+import { getSemestersForYear } from '../../utils/semester';
 import { PageHeader } from '../../components/common/PageHeader';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import { EmptyState } from '../../components/common/EmptyState';
@@ -339,13 +340,13 @@ const StudentFinalResults = () => {
 
       {/* Filters */}
       <div className="flex gap-3 flex-wrap items-center">
-        <select className="input w-36" value={yearFilter} onChange={(e) => setYearFilter(e.target.value)}>
+        <select className="input w-36" value={yearFilter} onChange={(e) => { setYearFilter(e.target.value); setSemFilter(''); }}>
           <option value="">All years</option>
           {[1, 2, 3, 4, 5, 6].map((y) => <option key={y} value={y}>Year {y}</option>)}
         </select>
-        <select className="input w-40" value={semFilter} onChange={(e) => setSemFilter(e.target.value)}>
+        <select className="input w-40" value={semFilter} disabled={!yearFilter} onChange={(e) => setSemFilter(e.target.value)}>
           <option value="">All semesters</option>
-          {[1, 2, 3, 4, 5, 6, 7, 8].map((s) => <option key={s} value={s}>Semester {s}</option>)}
+          {getSemestersForYear(yearFilter).map((s) => <option key={s} value={s}>Semester {s}</option>)}
         </select>
         {(yearFilter || semFilter) && (
           <button

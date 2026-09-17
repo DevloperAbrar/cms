@@ -4,6 +4,8 @@ import { Plus, Trash2, Unlock } from 'lucide-react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { PageHeader } from '../../components/common/PageHeader';
 import { superadminApi } from '../../api/superadmin.api';
+import { getSemestersForYear } from '../../utils/semester';
+import { getSemestersForYear } from '../../utils/semester';
 import toast from 'react-hot-toast';
 
 const ENTERED_BY_OPTIONS = ['faculty', 'coordinator', 'examcontroller'];
@@ -62,16 +64,16 @@ const ExamPatternPage = () => {
           </div>
           <div>
             <label className="label">Year</label>
-            <select className="input" value={selected.year} onChange={(e) => setSelected((p) => ({ ...p, year: e.target.value }))}>
+            <select className="input" value={selected.year} onChange={(e) => setSelected((p) => ({ ...p, year: e.target.value, semester: '' }))}>
               <option value="">Select year</option>
               {[1,2,3,4].map((y) => <option key={y} value={y}>Year {y}</option>)}
             </select>
           </div>
           <div>
             <label className="label">Semester</label>
-            <select className="input" value={selected.semester} onChange={(e) => setSelected((p) => ({ ...p, semester: e.target.value }))}>
+            <select className="input" value={selected.semester} disabled={!selected.year} onChange={(e) => setSelected((p) => ({ ...p, semester: e.target.value }))}>
               <option value="">Select semester</option>
-              {[1,2,3,4,5,6,7,8].map((s) => <option key={s} value={s}>Semester {s}</option>)}
+              {getSemestersForYear(selected.year).map((s) => <option key={s} value={s}>Semester {s}</option>)}
             </select>
           </div>
         </div>

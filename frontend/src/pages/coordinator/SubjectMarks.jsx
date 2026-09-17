@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Lock } from 'lucide-react';
 import { coordinatorApi } from '../../api/coordinator.api';
+import { getSemestersForYear } from '../../utils/semester';
 import { PageHeader } from '../../components/common/PageHeader';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import { EmptyState } from '../../components/common/EmptyState';
@@ -163,7 +164,7 @@ const CoordinatorSubjectMarks = () => {
               }}
             >
               <option value="">Select semester</option>
-              {[1,2,3,4,5,6,7,8].map((s) => (
+              {getSemestersForYear(year).map((s) => (
                 <option key={s} value={s}>Sem {s}</option>
               ))}
             </select>

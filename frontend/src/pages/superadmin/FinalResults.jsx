@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Eye, ChevronDown, ChevronUp } from 'lucide-react';
 import { superadminApi } from '../../api/superadmin.api';
+import { getSemestersForYear } from '../../utils/semester';
 import { PageHeader } from '../../components/common/PageHeader';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import { EmptyState } from '../../components/common/EmptyState';
@@ -117,17 +118,17 @@ const SuperAdminFinalResults = () => {
             <div>
               <label className="label">Year <span className="text-red-500">*</span></label>
               <select className="input" value={form.year}
-                onChange={(e) => setForm((p) => ({ ...p, year: e.target.value }))}>
+                onChange={(e) => setForm((p) => ({ ...p, year: e.target.value, semester: '' }))}>
                 <option value="">Select year</option>
                 {[1,2,3,4,5,6].map((y) => <option key={y} value={y}>Year {y}</option>)}
               </select>
             </div>
             <div>
               <label className="label">Semester <span className="text-red-500">*</span></label>
-              <select className="input" value={form.semester}
+              <select className="input" value={form.semester} disabled={!form.year}
                 onChange={(e) => setForm((p) => ({ ...p, semester: e.target.value }))}>
                 <option value="">Select semester</option>
-                {[1,2,3,4,5,6,7,8].map((s) => <option key={s} value={s}>Sem {s}</option>)}
+                {getSemestersForYear(form.year).map((s) => <option key={s} value={s}>Sem {s}</option>)}
               </select>
             </div>
             <div>

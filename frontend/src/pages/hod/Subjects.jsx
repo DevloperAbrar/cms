@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { hodApi } from '../../api/hod.api';
+import { getSemestersForYear } from '../../utils/semester';
 import { PageHeader } from '../../components/common/PageHeader';
 import { Table } from '../../components/common/Table';
 import { Modal } from '../../components/common/Modal';
@@ -16,7 +17,8 @@ const HODSubjects = () => {
   const [deleting, setDeleting] = useState(null);
   const [filters, setFilters] = useState({ branch_id: '', year: '' });
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm();
+  const { register, handleSubmit, reset, control, formState: { errors } } = useForm();
+  const formYear = useWatch({ control, name: 'year' });
 
   const { data: branches = [] } = useQuery({
     queryKey: ['hod-branches'],
@@ -171,9 +173,9 @@ const HODSubjects = () => {
             </div>
             <div>
               <label className="label">Semester</label>
-              <select className="input" {...register('semester', { required: 'Required' })}>
-                <option value="">Semester</option>
-                {[1,2,3,4,5,6,7,8].map((s) => <option key={s} value={s}>Sem {s}</option>)}
+              <select className="input" {...register('semester', { required: 'Required' })} disabled={!formYear}>
+                <option value="">{formYear ? 'Semester' : 'Select year first'}</option>
+                {getSemestersForYear(formYear).map((s) => <option key={s} value={s}>Sem {s}</option>)}
               </select>
               {errors.semester && <p className="text-xs text-red-600 mt-1">{errors.semester.message}</p>}
             </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { hodApi } from '../../api/hod.api';
+import { getSemestersForYear } from '../../utils/semester';
 import { PageHeader } from '../../components/common/PageHeader';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import { EmptyState } from '../../components/common/EmptyState';
@@ -146,7 +147,7 @@ const InternalMarksTab = () => {
     setFilters((p) => {
       const next = { ...p, [field]: value };
       if (field === 'branch_id') { next.subject_id = ''; next.exam_component_id = ''; }
-      if (field === 'year') { next.subject_id = ''; next.exam_component_id = ''; }
+      if (field === 'year') { next.subject_id = ''; next.exam_component_id = ''; next.semester = ''; }
       if (field === 'semester') { next.exam_component_id = ''; }
       if (field === 'subject_id') { next.exam_component_id = ''; }
       return next;
@@ -187,9 +188,14 @@ const InternalMarksTab = () => {
           </div>
           <div>
             <label className="label">Semester</label>
-            <select className="input" value={filters.semester} onChange={(e) => handleFilter('semester', e.target.value)}>
-              <option value="">Select Semester</option>
-              {[1,2,3,4,5,6,7,8].map((s) => <option key={s} value={s}>Sem {s}</option>)}
+            <select
+              className="input"
+              value={filters.semester}
+              disabled={!filters.year}
+              onChange={(e) => handleFilter('semester', e.target.value)}
+            >
+              <option value="">{filters.year ? 'Select Semester' : 'Select year first'}</option>
+              {getSemestersForYear(filters.year).map((s) => <option key={s} value={s}>Sem {s}</option>)}
             </select>
           </div>
         </div>

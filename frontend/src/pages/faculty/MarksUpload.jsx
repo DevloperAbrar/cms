@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { facultyApi } from '../../api/faculty.api';
+import { getSemestersForYear } from '../../utils/semester';
 import { PageHeader } from '../../components/common/PageHeader';
 import { EmptyState } from '../../components/common/EmptyState';
 import { MarksCSVUpload } from '../../components/marks/MarksCSVUpload';
@@ -34,6 +35,7 @@ const FacultyMarksUpload = () => {
                   subject_id: e.target.value,
                   branch_id: sub?.branch_id?._id || sub?.branch_id || '',
                   year: String(sub?.year || ''),
+                  semester: '',
                 }));
               }}
             >
@@ -45,9 +47,9 @@ const FacultyMarksUpload = () => {
           </div>
           <div>
             <label className="label">Semester</label>
-            <select className="input" value={filters.semester} onChange={(e) => setFilters((p) => ({ ...p, semester: e.target.value }))}>
+            <select className="input" value={filters.semester} disabled={!filters.year} onChange={(e) => setFilters((p) => ({ ...p, semester: e.target.value }))}>
               <option value="">Semester</option>
-              {[1, 2, 3, 4, 5, 6, 7, 8].map((s) => <option key={s} value={s}>Sem {s}</option>)}
+              {getSemestersForYear(filters.year).map((s) => <option key={s} value={s}>Sem {s}</option>)}
             </select>
           </div>
           <div>

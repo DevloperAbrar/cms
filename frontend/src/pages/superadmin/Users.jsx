@@ -8,6 +8,7 @@ import { Modal } from '../../components/common/Modal';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { superadminApi } from '../../api/superadmin.api';
+import { getSemestersForYear } from '../../utils/semester';
 import { downloadBlob } from '../../utils/csvTemplateGenerator';
 import toast from 'react-hot-toast';
 
@@ -19,6 +20,7 @@ const UsersPage = ({ role, title }) => {
   const [csvFile, setCsvFile] = useState(null);
   const [csvUploading, setCsvUploading] = useState(false);
   const { register, handleSubmit, reset, control } = useForm();
+  const formYear = useWatch({ control, name: 'year' });
 
   // Filter state (only for students)
   const [filters, setFilters] = useState({ search: '', department_id: '', branch_id: '', year: '', semester: '', section: '' });
@@ -180,7 +182,7 @@ const UsersPage = ({ role, title }) => {
             {/* Year */}
             <div className="min-w-[110px]">
               <label className="label">Year</label>
-              <select className="input" value={filters.year} onChange={(e) => setFilter('year', e.target.value)}>
+              <select className="input" value={filters.year} onChange={(e) => { setFilter('year', e.target.value); setFilter('semester', ''); }}>
                 <option value="">All years</option>
                 <option value="1">Year 1</option>
                 <option value="2">Year 2</option>
@@ -191,9 +193,9 @@ const UsersPage = ({ role, title }) => {
             {/* Semester */}
             <div className="min-w-[120px]">
               <label className="label">Semester</label>
-              <select className="input" value={filters.semester} onChange={(e) => setFilter('semester', e.target.value)}>
+              <select className="input" value={filters.semester} disabled={!filters.year} onChange={(e) => setFilter('semester', e.target.value)}>
                 <option value="">All sems</option>
-                {[1,2,3,4,5,6,7,8].map((s) => <option key={s} value={s}>Sem {s}</option>)}
+                {getSemestersForYear(filters.year).map((s) => <option key={s} value={s}>Sem {s}</option>)}
               </select>
             </div>
             {/* Section */}
@@ -252,9 +254,9 @@ const UsersPage = ({ role, title }) => {
               </div>
               <div>
                 <label className="label">Semester <span className="text-red-500">*</span></label>
-                <select className="input" {...register('semester', { required: true })}>
-                  <option value="">Select semester</option>
-                  {[1,2,3,4,5,6,7,8].map((s) => <option key={s} value={String(s)}>Semester {s}</option>)}
+                <select className="input" {...register('semester', { required: true })} disabled={!formYear}>
+                  <option value="">{formYear ? 'Select semester' : 'Select year first'}</option>
+                  {getSemestersForYear(formYear).map((s) => <option key={s} value={String(s)}>Semester {s}</option>)}
                 </select>
               </div>
               <div>

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Send } from 'lucide-react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { hodApi } from '../../api/hod.api';
+import { getSemestersForYear } from '../../utils/semester';
 import { superadminApi } from '../../api/superadmin.api';
 import { PageHeader } from '../../components/common/PageHeader';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
@@ -61,16 +62,16 @@ const HODTimetable = () => {
           </div>
           <div>
             <label className="label">Year</label>
-            <select className="input" value={filters.year} onChange={(e) => setFilters((p) => ({ ...p, year: e.target.value }))}>
+            <select className="input" value={filters.year} onChange={(e) => setFilters((p) => ({ ...p, year: e.target.value, semester: '' }))}>
               <option value="">Year</option>
               {[1, 2, 3, 4].map((y) => <option key={y} value={y}>{y}</option>)}
             </select>
           </div>
           <div>
             <label className="label">Semester</label>
-            <select className="input" value={filters.semester} onChange={(e) => setFilters((p) => ({ ...p, semester: e.target.value }))}>
+            <select className="input" value={filters.semester} disabled={!filters.year} onChange={(e) => setFilters((p) => ({ ...p, semester: e.target.value }))}>
               <option value="">Semester</option>
-              {[1, 2, 3, 4, 5, 6, 7, 8].map((s) => <option key={s} value={s}>{s}</option>)}
+              {getSemestersForYear(filters.year).map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div>

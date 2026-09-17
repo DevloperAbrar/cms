@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { examControllerApi } from '../../api/examcontroller.api';
+import { getSemestersForYear } from '../../utils/semester';
 import { PageHeader } from '../../components/common/PageHeader';
 import { EmptyState } from '../../components/common/EmptyState';
 import { MarksCSVUpload } from '../../components/marks/MarksCSVUpload';
@@ -59,7 +60,7 @@ const ExamControllerMarksUpload = () => {
             <select
               className="input"
               value={filters.year}
-              onChange={(e) => setFilters((p) => ({ ...p, year: e.target.value, subject_id: '' }))}
+              onChange={(e) => setFilters((p) => ({ ...p, year: e.target.value, subject_id: '', semester: '' }))}
             >
               <option value="">Year</option>
               {[1, 2, 3, 4].map((y) => <option key={y} value={y}>Year {y}</option>)}
@@ -70,10 +71,11 @@ const ExamControllerMarksUpload = () => {
             <select
               className="input"
               value={filters.semester}
+              disabled={!filters.year}
               onChange={(e) => setFilters((p) => ({ ...p, semester: e.target.value }))}
             >
               <option value="">Semester</option>
-              {[1, 2, 3, 4, 5, 6, 7, 8].map((s) => <option key={s} value={s}>Sem {s}</option>)}
+              {getSemestersForYear(filters.year).map((s) => <option key={s} value={s}>Sem {s}</option>)}
             </select>
           </div>
           <div>

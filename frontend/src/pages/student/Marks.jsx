@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { studentApi } from '../../api/student.api';
+import { getSemestersUpToYear } from '../../utils/semester';
 import { PageHeader } from '../../components/common/PageHeader';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import { EmptyState } from '../../components/common/EmptyState';
@@ -49,7 +50,7 @@ const StudentMarks = () => {
           onChange={(e) => setSemester(e.target.value)}
         >
           <option value="">All Semesters</option>
-          {[1, 2, 3, 4, 5, 6, 7, 8].map((s) => (
+          {getSemestersUpToYear(user?.year).map((s) => (
             <option key={s} value={s}>Semester {s}</option>
           ))}
         </select>

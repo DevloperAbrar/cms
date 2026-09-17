@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Save } from 'lucide-react';
 import { coordinatorApi } from '../../api/coordinator.api';
+import { getSemestersForYear } from '../../utils/semester';
 import { PageHeader } from '../../components/common/PageHeader';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import { EmptyState } from '../../components/common/EmptyState';
@@ -62,7 +63,7 @@ const CoordinatorMarks = () => {
             <label className="label">Subject</label>
             <select className="input" value={filters.subject_id} onChange={(e) => {
               const sub = subjects.find((s) => s._id === e.target.value);
-              setFilters((p) => ({ ...p, subject_id: e.target.value, branch_id: sub?.branch_id?._id || sub?.branch_id || '', year: String(sub?.year || '') }));
+              setFilters((p) => ({ ...p, subject_id: e.target.value, branch_id: sub?.branch_id?._id || sub?.branch_id || '', year: String(sub?.year || ''), semester: '' }));
             }}>
               <option value="">Select subject</option>
               {subjects.map((s) => <option key={s._id} value={s._id}>{s.name}</option>)}
@@ -70,9 +71,9 @@ const CoordinatorMarks = () => {
           </div>
           <div>
             <label className="label">Semester</label>
-            <select className="input" value={filters.semester} onChange={(e) => setFilters((p) => ({ ...p, semester: e.target.value }))}>
+            <select className="input" value={filters.semester} disabled={!filters.year} onChange={(e) => setFilters((p) => ({ ...p, semester: e.target.value }))}>
               <option value="">Semester</option>
-              {[1,2,3,4,5,6,7,8].map((s) => <option key={s} value={s}>Sem {s}</option>)}
+              {getSemestersForYear(filters.year).map((s) => <option key={s} value={s}>Sem {s}</option>)}
             </select>
           </div>
           <div>

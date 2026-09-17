@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { hodApi } from '../../api/hod.api';
+import { getSemestersForYear } from '../../utils/semester';
 import { PageHeader } from '../../components/common/PageHeader';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import { Plus, Trash2, Save, Copy } from 'lucide-react';
@@ -61,7 +62,11 @@ const HODExamPatternPage = () => {
     setComponents([emptyComponent()]);
     setShowCopyBar(false);
     setCopyFrom('');
-    setFilters((p) => ({ ...p, [field]: value }));
+    setFilters((p) => {
+      const next = { ...p, [field]: value };
+      if (field === 'year') next.semester = ''; // old semester may not belong to the new year
+      return next;
+    });
   };
 
   // Apply copy from selected pattern
@@ -133,11 +138,16 @@ const HODExamPatternPage = () => {
           </div>
           <div>
             <label className="label">Semester</label>
-            <select className="input" value={filters.semester} onChange={(e) => handleFilterChange('semester', e.target.value)}>
-              <option value="">Select Semester</option>
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((s) => <option key={s} value={s}>Semester {s}</option>)}
+            <select
+              className="input"
+              value={filters.semester}
+              disabled={!filters.year}
+              onChange={(e) => handleFilterChange('semester', e.target.value)}
+            >
+              <option value="">{filters.year ? 'Select Semester' : 'Select year first'}</option>
+              {getSemestersForYear(filters.year).map((s) => <option key={s} value={s}>Semester {s}</option>)}
             </select>
-          </div>
+          </div> 
         </div>
       </div>
 

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Lock, Unlock } from 'lucide-react';
 import { hodApi } from '../../api/hod.api';
+import { getSemestersForYear } from '../../utils/semester';
 import { PageHeader } from '../../components/common/PageHeader';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import { EmptyState } from '../../components/common/EmptyState';
@@ -93,7 +94,7 @@ const HODMarksLock = () => {
             <select
               className="input"
               value={filters.year}
-              onChange={(e) => setFilters((p) => ({ ...p, year: e.target.value }))}
+              onChange={(e) => setFilters((p) => ({ ...p, year: e.target.value, semester: '' }))}
             >
               <option value="">Year</option>
               {[1, 2, 3, 4].map((y) => <option key={y} value={y}>Year {y}</option>)}
@@ -104,10 +105,11 @@ const HODMarksLock = () => {
             <select
               className="input"
               value={filters.semester}
+              disabled={!filters.year}
               onChange={(e) => setFilters((p) => ({ ...p, semester: e.target.value }))}
             >
               <option value="">Semester</option>
-              {[1, 2, 3, 4, 5, 6, 7, 8].map((s) => <option key={s} value={s}>Sem {s}</option>)}
+              {getSemestersForYear(filters.year).map((s) => <option key={s} value={s}>Sem {s}</option>)}
             </select>
           </div>
         </div>

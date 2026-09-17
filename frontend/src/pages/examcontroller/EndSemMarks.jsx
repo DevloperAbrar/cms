@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Save } from 'lucide-react';
 import { examControllerApi } from '../../api/examcontroller.api';
+import { getSemestersForYear } from '../../utils/semester';
 import { PageHeader } from '../../components/common/PageHeader';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import { EmptyState } from '../../components/common/EmptyState';
@@ -82,16 +83,16 @@ const ExamControllerEndSemMarks = () => {
           </div>
           <div>
             <label className="label">Year</label>
-            <select className="input" value={filters.year} onChange={(e) => setFilters((p) => ({ ...p, year: e.target.value, subject_id: '' }))}>
+            <select className="input" value={filters.year} onChange={(e) => setFilters((p) => ({ ...p, year: e.target.value, subject_id: '', semester: '' }))}>
               <option value="">Year</option>
               {[1, 2, 3, 4].map((y) => <option key={y} value={y}>Year {y}</option>)}
             </select>
           </div>
           <div>
             <label className="label">Semester</label>
-            <select className="input" value={filters.semester} onChange={(e) => setFilters((p) => ({ ...p, semester: e.target.value }))}>
+            <select className="input" value={filters.semester} disabled={!filters.year} onChange={(e) => setFilters((p) => ({ ...p, semester: e.target.value }))}>
               <option value="">Semester</option>
-              {[1, 2, 3, 4, 5, 6, 7, 8].map((s) => <option key={s} value={s}>Sem {s}</option>)}
+              {getSemestersForYear(filters.year).map((s) => <option key={s} value={s}>Sem {s}</option>)}
             </select>
           </div>
           <div>
