@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { examControllerApi } from '../../api/examcontroller.api';
 import { PageHeader } from '../../components/common/PageHeader';
-import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import { GitBranch, Users, ClipboardList } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
 
@@ -18,16 +17,22 @@ const StatCard = ({ label, value, icon: Icon, color }) => (
 );
 
 const ExamControllerDashboard = () => {
-  const { user } = useAuthStore();
+  const { user, _hasHydrated } = useAuthStore();
 
-  const { data: branches = [], isLoading: lb } = useQuery({
+  const { data: branches = [] } = useQuery({
     queryKey: ['ec-branches'],
     queryFn: examControllerApi.getAllBranches,
+    enabled: !!_hasHydrated,
+    retry: false,
+    staleTime: 1000 * 60 * 5,
   });
 
-  const { data: subjects = [], isLoading: ls } = useQuery({
+  const { data: subjects = [] } = useQuery({
     queryKey: ['ec-subjects'],
     queryFn: () => examControllerApi.getAllSubjects({}),
+    enabled: !!_hasHydrated,
+    retry: false,
+    staleTime: 1000 * 60 * 5,
   });
 
   return (

@@ -56,10 +56,26 @@ async function authenticate(req, res, next) {
       coordinatorBranches = rows.map((r) => ({ branch_id: r.branchId, year: r.year }));
     }
 
-    // Attach to req — rest of your controllers expect req.user
+    // ── Auto-refresh cookie if token expires in less than 24 hours ──
+    const expiresIn = decoded.exp - Math.floor(Date.now() / 1000);
+    if (expiresIn < 60 * 60 * 24) {
+      const newToken = jwt.sign(
+        { id: user.id, role: user.role },
+        process.env.JWT_SECRET,
+        { expiresIn: '7d' }
+      );
+      res.cookie('token', newToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      });
+    }
+    // ────────────────────────────────────────────────────────────────
+
     req.user = {
       id: user.id,
-      _id: user.id,           // backward compat for any controller still using req.user._id
+      _id: user.id,
       name: user.name,
       email: user.email,
       role: user.role,
