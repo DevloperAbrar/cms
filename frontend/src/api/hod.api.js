@@ -12,6 +12,8 @@ export const hodApi = {
   getDeptFaculty: () => api.get(`${base}/faculty`).then((r) => r.data),
   assignCoordinator: (data) =>
     api.post(`${base}/faculty/assign-coordinator`, data).then((r) => r.data),
+  removeCoordinator: (faculty_id) =>
+    api.delete(`${base}/faculty/coordinator/${faculty_id}`).then((r) => r.data),
 
   //branch
   getDeptBranches: () => api.get(`${base}/branches`).then((r) => r.data),

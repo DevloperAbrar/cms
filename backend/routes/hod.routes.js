@@ -17,6 +17,7 @@ router.patch('/timetable/:id/publish', auditLog('PUBLISH', 'Timetable'), ctrl.pu
 // ─── FACULTY MANAGEMENT ──────────────────────────────────────────────────────
 router.get('/faculty', ctrl.getDeptFaculty);
 router.post('/faculty/assign-coordinator', auditLog('ASSIGN_COORDINATOR', 'User'), ctrl.assignCoordinator);
+router.delete('/faculty/coordinator/:faculty_id', auditLog('REMOVE_COORDINATOR', 'User'), ctrl.removeCoordinator);
 router.get('/branches', ctrl.getDeptBranches);
 router.get('/subjects', ctrl.getDeptSubjects);
 

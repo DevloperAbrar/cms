@@ -231,6 +231,19 @@ exports.lockMarksComponent = async (req, res) => {
   } catch (err) { return sendError(res, err.message); }
 };
 
+exports.removeCoordinator = async (req, res) => {
+  try {
+    const { faculty_id } = req.params;
+    const user = await prisma.user.findFirst({ where: { id: faculty_id } });
+    if (!user) return sendNotFound(res, 'Faculty not found.');
+
+    await prisma.coordinatorBranch.deleteMany({ where: { userId: faculty_id } });
+    await prisma.user.update({ where: { id: faculty_id }, data: { role: 'faculty' } });
+
+    return sendSuccess(res, null, 'Coordinator removed.');
+  } catch (err) { return sendError(res, err.message); }
+};
+
 exports.unlockMarksComponent = async (req, res) => {
   try {
     const { subject_id, branch_id, year, exam_component_id } = req.body;
